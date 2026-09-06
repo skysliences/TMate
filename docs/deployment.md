@@ -203,7 +203,7 @@ npm run api
 
 另开终端 `curl -f http://127.0.0.1:8787/api/health`，然后在浏览器打开对应地址。健康接口只表明 HTTP 服务运行，是否能读数据库还要在网页输入 API_KEY 验证。
 
-生产环境可以只保留 `server/`、`www/`、配对工具和后端依赖：`npm ci --prefix server --omit=dev`。Web 服务的工作目录是项目目录，Node 从 `server/node_modules` 解析依赖，不需要启动前端开发服务器。
+生产环境可以只保留根目录 `package.json`（服务版本信息）、`server/`、`www/`、配对工具和后端依赖：`npm ci --prefix server --omit=dev`。Web 服务的工作目录是项目目录，Node 从 `server/node_modules` 解析依赖，不需要启动前端开发服务器。
 
 ### 5.2 Linux systemd 开机启动
 
@@ -213,7 +213,7 @@ npm run api
 npm ci --prefix server --omit=dev
 sudo useradd --system --home /var/lib/tmate --shell /usr/sbin/nologin tmate
 sudo install -d -m 755 /opt/tmate
-sudo cp -a server www scripts deploy /opt/tmate/
+sudo cp -a package.json server www scripts deploy /opt/tmate/
 sudo install -d -o root -g tmate -m 750 /etc/tmate
 sudo install -o tmate -g tmate -m 600 .env /etc/tmate/tmate.env
 ```

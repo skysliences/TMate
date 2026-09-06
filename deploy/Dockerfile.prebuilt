@@ -9,7 +9,9 @@ COPY --chown=node:node server/index.mjs server/config.mjs server/domain.mjs serv
 COPY --chown=node:node server/software.mjs server/mqtt-cache.mjs ./server/
 COPY --chown=node:node deploy/smoke.mjs ./deploy/smoke.mjs
 COPY --chown=node:node deploy/pair-device.mjs ./deploy/pair-device.mjs
+COPY --chown=node:node scripts/check-config.mjs ./scripts/check-config.mjs
 COPY --chown=node:node www/ ./www/
+RUN install -d -o node -g node -m 700 /app/data
 USER node
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -36,7 +36,7 @@ jobs:
           retention-days: 30
   android:
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -50,7 +50,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Verify the runner's preinstalled Android 36 SDK
+        run: test -f "$ANDROID_HOME/platforms/android-36/android.jar" && test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
       - run: npm ci
       - run: npm run mobile:icons && node scripts/configure-mobile.mjs && npm run build:web && npx cap sync android
       - name: Build Android (release when signing is configured, otherwise debug)
