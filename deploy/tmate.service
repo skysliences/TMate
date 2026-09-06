@@ -1,0 +1,29 @@
+[Unit]
+Description=TMate read-only TeslaMate dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tmate
+Group=tmate
+WorkingDirectory=/opt/tmate
+# Adjust the Node binary path if installed somewhere else.
+ExecStart=/usr/bin/node --env-file=/etc/tmate/tmate.env /opt/tmate/server/index.mjs
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tmate
+StateDirectory=tmate
+StateDirectoryMode=0700
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

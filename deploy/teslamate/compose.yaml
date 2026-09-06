@@ -1,0 +1,79 @@
+# Adapted from the official TeslaMate Docker installation. Fresh installs only.
+name: ${TESLAMATE_PROJECT_NAME:-teslamate}
+services:
+  teslamate:
+    image: teslamate/teslamate:${TESLAMATE_VERSION:?Fill TESLAMATE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Fill ENCRYPTION_KEY}
+      DATABASE_USER: ${DATABASE_USER:-teslamate}
+      DATABASE_PASS: ${DATABASE_PASS:?Fill DATABASE_PASS}
+      DATABASE_NAME: ${DATABASE_NAME:-teslamate}
+      DATABASE_HOST: database
+      MQTT_HOST: mosquitto
+      VIRTUAL_HOST: ${TESLAMATE_HOSTNAME:-localhost}
+      CHECK_ORIGIN: 'true'
+      TZ: ${TZ:-Asia/Shanghai}
+      TESLA_API_HOST: ${TESLA_API_HOST:-owner-api.teslamotors.com}
+      TESLA_WSS_HOST: ${TESLA_WSS_HOST:-streaming.vn.teslamotors.com}
+    ports:
+      - '${TM_BIND_ADDRESS:-127.0.0.1}:${TESLAMATE_PORT:-4000}:4000'
+    volumes:
+      - import:/opt/app/import
+    cap_drop: [ALL]
+  database:
+    image: postgres:${POSTGRES_VERSION:?Fill POSTGRES_VERSION}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-teslamate}
+      POSTGRES_PASSWORD: ${DATABASE_PASS:?Fill DATABASE_PASS}
+      POSTGRES_DB: ${DATABASE_NAME:-teslamate}
+    # PostgreSQL 18 uses this parent directory. Not compatible with an old
+    # PostgreSQL 16/17 volume; upgrade it only with the upstream migration guide.
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  grafana:
+    image: teslamate/grafana:${GRAFANA_VERSION:?Fill GRAFANA_VERSION}
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_USER: ${DATABASE_USER:-teslamate}
+      DATABASE_PASS: ${DATABASE_PASS:?Fill DATABASE_PASS}
+      DATABASE_NAME: ${DATABASE_NAME:-teslamate}
+      DATABASE_HOST: database
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Fill GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '${TM_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000'
+    volumes:
+      - grafana:/var/lib/grafana
+  mosquitto:
+    image: eclipse-mosquitto:${MOSQUITTO_VERSION:-2}
+    restart: unless-stopped
+    # No host port: this anonymous broker is only for the isolated Docker network.
+    command: mosquitto -c /mosquitto-no-auth.conf
+    volumes:
+      - mosquitto-config:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+networks:
+  default:
+    name: ${TESLAMATE_NETWORK:-teslamate_default}
+volumes:
+  database: {}
+  grafana: {}
+  mosquitto-config: {}
+  mosquitto-data: {}
+  import: {}

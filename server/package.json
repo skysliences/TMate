@@ -1,0 +1,14 @@
+{
+  "name": "tmate-gateway",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "gcoord": "1.0.7",
+    "mqtt": "5.15.2",
+    "pg": "8.23.0"
+  }
+}

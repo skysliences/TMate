@@ -1,0 +1,12 @@
+# Only the runtime files enter the build context; never include NAS secrets.
+*
+!www/
+!www/**
+!server/
+!server/*.mjs
+!server/package.json
+!server/package-lock.json
+!deploy/
+!deploy/Dockerfile.prebuilt
+!deploy/smoke.mjs
+!deploy/pair-device.mjs

@@ -1,0 +1,13 @@
+# Replace the hostname and certificate paths with your own.
+server {
+    listen 443 ssl;
+    server_name car.example.com;
+    ssl_certificate /etc/letsencrypt/live/car.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/car.example.com/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 25s;
+    }
+}

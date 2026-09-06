@@ -1,0 +1,65 @@
+name: tmate
+services:
+  tmate:
+    image: tmate:local
+    build: .
+    restart: unless-stopped
+    environment:
+      AMAP_KEY: ${AMAP_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:?Set a read-only PostgreSQL connection}
+      API_KEY: ${API_KEY:?Set a random API key of at least 32 characters}
+      WEB_ORIGIN: ${WEB_ORIGIN:-}
+      MQTT_URL: ${MQTT_URL:-}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_PREFIX: ${MQTT_PREFIX:-teslamate}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-capacitor://localhost,https://localhost}
+      HOST: 0.0.0.0
+      PORT: 8787
+      PUBLIC_DIR: /app/www
+      MAP_CACHE_DIR: /app/data
+    ports:
+      - '${TMATE_BIND_ADDRESS:-127.0.0.1}:${TMATE_HTTP_PORT:-8787}:8787'
+    networks:
+      - teslamate
+      - frontend
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - map-cache:/app/data
+    mem_limit: 384m
+    pids_limit: 100
+  https:
+    profiles: [https]
+    image: nginx:1.30.4-alpine
+    restart: unless-stopped
+    depends_on:
+      tmate:
+        condition: service_healthy
+    # nginx startup expands only these two non-secret template variables.
+    environment:
+      TMATE_DOMAIN: ${TMATE_DOMAIN:-localhost}
+      TMATE_HTTPS_PORT: ${TMATE_HTTPS_PORT:-8443}
+      NGINX_ENVSUBST_FILTER: '^(TMATE_DOMAIN|TMATE_HTTPS_PORT)$$'
+    ports:
+      - '${TMATE_HTTPS_BIND_ADDRESS:-127.0.0.1}:${TMATE_HTTPS_PORT:-8443}:8443'
+    networks: [frontend]
+    volumes:
+      - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./tls:/etc/tmate/tls:ro
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 96m
+    pids_limit: 100
+networks:
+  teslamate:
+    external: true
+    name: ${TESLAMATE_NETWORK:-teslamate_default}
+  frontend: {}
+volumes:
+  map-cache: {}

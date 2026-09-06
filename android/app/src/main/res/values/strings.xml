@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TMate</string>
+    <string name="title_activity_main">TMate</string>
+    <string name="package_name">dev.bugo.voltlog</string>
+    <string name="custom_url_scheme">dev.bugo.voltlog</string>
+</resources>
