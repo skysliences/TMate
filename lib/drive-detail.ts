@@ -22,6 +22,28 @@ export type DriveDetailData = {
   };
 };
 
+// Give short trips room to show a one-percentage-point change, without moving
+// either series away from its real value. The chart labels this cropped scale.
+export function batteryLevelDomain(
+  values: readonly (number | null)[],
+): [number, number] {
+  const valid = values.filter(
+    (value): value is number =>
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 100,
+  );
+  if (!valid.length) return [0, 100];
+  let lower = Math.max(0, Math.floor(Math.min(...valid)) - 2);
+  let upper = Math.min(100, Math.ceil(Math.max(...valid)) + 2);
+  if (upper - lower < 4) {
+    if (lower === 0) upper = 4;
+    else lower = 96;
+  }
+  return [lower, upper];
+}
+
 // A long missing interval must not look like a continuously observed curve.
 export function chartSeries(samples: BatterySample[], key: BatteryKey) {
   const maximum = key === 'heater' ? 1 : key.endsWith('Range') ? 2000 : 100;

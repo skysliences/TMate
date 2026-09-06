@@ -1,7 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chartSeries, demoDriveDetail } from './drive-detail.ts';
+import {
+  chartSeries,
+  demoDriveDetail,
+  batteryLevelDomain,
+} from './drive-detail.ts';
 import { makeDemo } from './data.ts';
+
+void test('SOC scales show small changes without clipping zero, full or constant battery levels', () => {
+  assert.deepEqual(batteryLevelDomain([96, 97, null]), [94, 99]);
+  assert.deepEqual(batteryLevelDomain([96, 96]), [94, 98]);
+  assert.deepEqual(batteryLevelDomain([0]), [0, 4]);
+  assert.deepEqual(batteryLevelDomain([100]), [96, 100]);
+  assert.deepEqual(batteryLevelDomain([0, 100]), [0, 100]);
+  assert.deepEqual(
+    batteryLevelDomain([null, NaN, Infinity, -1, 101]),
+    [0, 100],
+  );
+});
 
 void test('battery charts keep zeroes, order time, reject invalid samples and leave long gaps empty', () => {
   const points = chartSeries(

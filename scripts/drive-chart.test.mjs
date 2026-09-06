@@ -11,6 +11,8 @@ let BatteryChart;
 let ChartContainer;
 let ChartTooltip;
 let XAxis;
+let YAxis;
+let Line;
 let ChartErrorBoundary;
 
 before(async () => {
@@ -33,7 +35,7 @@ before(async () => {
   ({ ChartErrorBoundary } = await server.ssrLoadModule(
     '/components/chart-error-boundary.tsx',
   ));
-  ({ XAxis } = await import('recharts'));
+  ({ XAxis, YAxis, Line } = await import('recharts'));
 });
 
 after(async () => {
@@ -101,10 +103,94 @@ for (const [key, label] of Object.entries(labels)) {
       /时间未记录/,
     );
     const axis = findElement(chart, XAxis);
-    assert.equal(axis.props.tickFormatter(time), '20:34');
+    assert.equal(axis.props.tickFormatter(time), '20:34:00');
     assert.equal(axis.props.tickFormatter(NaN), '—');
   });
 }
+
+void test('dense and sparse curves span the trip and do not cover each other with white dots', async () => {
+  const makeSamples = (count) =>
+    Array.from({ length: count }, (_, i) => ({
+      date: new Date(time + (i / (count - 1)) * 240000).toISOString(),
+      value: i < count / 2 ? 97 : 96,
+    }));
+  const series = { battery: makeSamples(801), usableBattery: makeSamples(17) };
+  const chart = BatteryChart({
+    title: '电量变化',
+    fields: Object.keys(series),
+    data: { series },
+    unit: '%',
+  });
+  const container = findElement(chart, ChartContainer);
+  const lines = container.props.children.props.children
+    .flat()
+    .filter((item) => item?.type === Line);
+  const xAxis = findElement(chart, XAxis).props;
+  const yAxis = findElement(chart, YAxis).props;
+  assert.deepEqual(xAxis.domain, [time, time + 240000]);
+  assert.deepEqual(yAxis.domain, [94, 99]);
+  assert.equal(
+    new Set(xAxis.ticks.map(xAxis.tickFormatter)).size,
+    xAxis.ticks.length,
+  );
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].props.strokeWidth > lines[1].props.strokeWidth);
+  const { computeLinePoints } = await import('recharts/lib/cartesian/Line.js');
+  for (const line of lines) {
+    const { data, dataKey, dot, fill } = line.props;
+    assert.equal(data.length, series[dataKey].length);
+    const dots = data
+      .map((_, index) => dot({ cx: index, cy: 10, index }))
+      .filter(Boolean);
+    assert.equal(dots.length, 2);
+    for (const marker of dots) {
+      assert.equal(marker.props.fill, fill);
+      assert.notEqual(marker.props.fill, '#fff');
+    }
+    const geometry = computeLinePoints({
+      layout: 'horizontal',
+      dataKey,
+      displayedData: data,
+      xAxis: {
+        type: 'number',
+        dataKey: 'time',
+        scale: { map: (v) => ((v - time) / 240000) * 280 },
+      },
+      yAxis: { scale: { map: (v) => 160 - ((v - 94) / 5) * 160 } },
+      xAxisTicks: [],
+      yAxisTicks: [],
+      bandSize: 0,
+    });
+    assert.equal(geometry[0].x, 0);
+    assert.equal(geometry.at(-1).x, 280);
+    assert.ok(
+      geometry.every(
+        (point) => Number.isFinite(point.x) && point.y > 0 && point.y < 160,
+      ),
+    );
+  }
+});
+
+void test('isolated samples and real missing intervals keep visible colored endpoints', () => {
+  const series = {
+    battery: [
+      { date: new Date(time).toISOString(), value: 97 },
+      { date: new Date(time + 240000).toISOString(), value: 96 },
+    ],
+  };
+  const chart = BatteryChart({
+    title: '电量变化',
+    fields: ['battery'],
+    data: { series },
+    unit: '%',
+  });
+  const line = findElement(chart, Line);
+  assert.equal(line.props.connectNulls, false);
+  assert.equal(line.props.data.length, 3);
+  assert.ok(line.props.dot({ cx: 0, cy: 10, index: 0 }));
+  assert.equal(line.props.dot({ cx: 1, cy: 10, index: 1 }), null);
+  assert.ok(line.props.dot({ cx: 2, cy: 10, index: 2 }));
+});
 
 void test('chart error fallback is local, readable and offers a reset', () => {
   const child = createElement('p', null, '正常图表');

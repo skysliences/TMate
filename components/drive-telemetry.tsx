@@ -12,9 +12,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChartErrorBoundary } from '@/components/chart-error-boundary';
 import { api, type Connection } from '@/lib/api';
 import { fmt, type Drive } from '@/lib/data';
-import { chartTimeLabel, chartTooltipLabel } from '@/lib/chart-time';
+import { chartTimeAxis, chartTooltipLabel } from '@/lib/chart-time';
 import {
   chartSeries,
+  batteryLevelDomain,
   demoDriveDetail,
   type BatteryKey,
   type DriveDetailData,
@@ -49,6 +50,10 @@ export function BatteryChart({
   ]
     .sort((a, b) => a - b)
     .map((time) => ({ time }));
+  const timeAxis = chartTimeAxis(times.map((point) => point.time));
+  const levelDomain = batteryLevelDomain(
+    lines.flatMap(({ key, points }) => points.map((point) => point[key])),
+  );
   return (
     <div className="drive-battery-chart">
       <h4>{title}</h4>
@@ -67,6 +72,12 @@ export function BatteryChart({
           </li>
         ))}
       </ul>
+      {hasData && unit === '%' && (
+        <p className="drive-telemetry-note">
+          {levelDomain[0] > 0 || levelDomain[1] < 100 ? '纵轴局部放大 · ' : ''}
+          数值相同时，两条曲线会重合
+        </p>
+      )}
       {hasData ? (
         <ChartContainer
           className={`detail-chart${unit === 'state' ? ' heater-chart' : ''}`}
@@ -82,17 +93,24 @@ export function BatteryChart({
               dataKey="time"
               type="number"
               scale="time"
-              domain={['dataMin', 'dataMax']}
-              tickFormatter={(v) => chartTimeLabel(v)}
-              minTickGap={35}
+              domain={timeAxis.domain}
+              ticks={timeAxis.ticks}
+              tickFormatter={timeAxis.formatTick}
+              minTickGap={18}
+              interval="preserveStartEnd"
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               width={42}
               domain={
-                unit === 'km' ? ['auto', 'auto'] : [0, unit === '%' ? 100 : 1]
+                unit === 'km'
+                  ? ['auto', 'auto']
+                  : unit === '%'
+                    ? levelDomain
+                    : [0, 1]
               }
+              allowDecimals={unit === 'km'}
               ticks={unit === 'state' ? [0, 1] : undefined}
               tickFormatter={(v) =>
                 unit === 'state' ? (v ? '开' : '关') : `${v}`
@@ -126,8 +144,28 @@ export function BatteryChart({
                 type={unit === 'state' ? 'stepAfter' : 'linear'}
                 stroke={sensors[key].color}
                 strokeDasharray={i ? '5 4' : undefined}
-                strokeWidth={2}
-                dot={{ r: 1.5, strokeWidth: 0 }}
+                strokeWidth={i ? 2 : 3}
+                fill={sensors[key].color}
+                dot={({ cx, cy, index }) => {
+                  if (index == null || points[index]?.[key] == null)
+                    return null;
+                  // Only mark segment endpoints. Dense white-filled default dots
+                  // used to cover both lines, making later samples disappear.
+                  const endpoint =
+                    index === 0 ||
+                    index === points.length - 1 ||
+                    points[index - 1]?.[key] == null ||
+                    points[index + 1]?.[key] == null;
+                  return endpoint ? (
+                    <circle
+                      key={index}
+                      cx={cx}
+                      cy={cy}
+                      r={2}
+                      fill={sensors[key].color}
+                    />
+                  ) : null;
+                }}
                 activeDot={{ r: 4 }}
                 connectNulls={false}
                 isAnimationActive={false}
