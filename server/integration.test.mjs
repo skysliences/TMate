@@ -219,6 +219,24 @@ void test('China date boundaries and daily distance use the same calendar', asyn
   const rows = await query(sql.dailySql, [2, '2026-08-31T16:00:00Z']);
   assert.equal(rows.find((r) => r.date === '2026-09-01').distance, 12);
 });
+void test('drive detail endpoint is authenticated, read-only, completed-drive-only and car scoped', async () => {
+  const headers = { Authorization: `Bearer ${key}` };
+  const path = `${base}/api/cars/1/drives/1/detail`;
+  assert.equal((await fetch(path)).status, 401);
+  assert.equal((await fetch(path, { method: 'POST', headers })).status, 405);
+  const response = await fetch(path, { headers });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.energy.netKwh, 1.5);
+  assert.equal(data.energy.consumptionKwh100Km, 15);
+  assert.equal(data.energy.recoveredKwh, null);
+  assert.equal(data.energy.recoveryUnavailable, 'no-power');
+  assert.ok(Array.isArray(data.battery.series.battery));
+  for (const suffix of ['cars/2/drives/1/detail', 'cars/1/drives/101/detail', 'cars/1/drives/999999/detail', 'cars/1/charges/1/detail']) {
+    assert.equal((await fetch(`${base}/api/${suffix}`, { headers })).status, 404);
+  }
+  assert.equal((await fetch(`${base}/api/cars/1/drives/0/detail`, { headers })).status, 400);
+});
 void test('unknown telemetry stays null and retained message receipt never masquerades as freshness', () => {
   const unknown = mergeStatus();
   assert.equal(unknown.battery, null);

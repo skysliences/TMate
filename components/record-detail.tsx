@@ -26,6 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { NoData } from './data-views';
 import { TripMap } from './trip-map';
+import { DriveTelemetry } from './drive-telemetry';
 import { api, type Connection } from '@/lib/api';
 import {
   dateLabel,
@@ -165,7 +166,10 @@ export function RecordDetail({
   currency: string;
   electricityPrice: number | null;
 }) {
-  const cost = detail?.type === 'charge' ? chargeCost(detail.record, electricityPrice) : null;
+  const cost =
+    detail?.type === 'charge'
+      ? chargeCost(detail.record, electricityPrice)
+      : null;
   const query = useQuery({
     queryKey: [
       'detail',
@@ -220,7 +224,7 @@ export function RecordDetail({
                   <span>→</span>
                   {detail.record.end}
                 </h2>
-                <div className="detail-stats">
+                <div className="detail-stats drive-summary-stats">
                   <div>
                     <small>里程</small>
                     <strong>
@@ -236,13 +240,6 @@ export function RecordDetail({
                     </strong>
                   </div>
                   <div>
-                    <small>耗电 · 估算</small>
-                    <strong>
-                      {fmt(detail.record.energy)}
-                      <em>kWh</em>
-                    </strong>
-                  </div>
-                  <div>
                     <small>最高车速</small>
                     <strong>
                       {fmt(detail.record.speedMax, 0)}
@@ -250,6 +247,12 @@ export function RecordDetail({
                     </strong>
                   </div>
                 </div>
+                <DriveTelemetry
+                  key={`${carId}-${detail.record.id}`}
+                  record={detail.record}
+                  connection={connection}
+                  carId={carId}
+                />
               </>
             ) : (
               <>
@@ -276,7 +279,12 @@ export function RecordDetail({
                         ? '未记录'
                         : `${currency} ${fmt(cost.value, 2)}`}
                     </strong>
-                    {cost?.estimated && <small>按{cost.basis === 'grid' ? '电网用电量' : '充入电量'} × {currency} {electricityPrice} / kWh</small>}
+                    {cost?.estimated && (
+                      <small>
+                        按{cost.basis === 'grid' ? '电网用电量' : '充入电量'} ×{' '}
+                        {currency} {electricityPrice} / kWh
+                      </small>
+                    )}
                   </div>
                   <div>
                     <small>充电时长</small>

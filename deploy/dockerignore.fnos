@@ -10,3 +10,5 @@
 !deploy/Dockerfile.prebuilt
 !deploy/smoke.mjs
 !deploy/pair-device.mjs
+!scripts/
+!scripts/check-config.mjs

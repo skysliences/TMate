@@ -1097,6 +1097,115 @@ h2 {
   margin-top: 24px;
   font-weight: 550;
 }
+.drive-summary-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.drive-summary-stats em {
+  display: block;
+  margin: 4px 0 0;
+}
+.drive-telemetry-section {
+  margin: 0 0 28px;
+  padding: 20px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: var(--card);
+  min-width: 0;
+}
+.drive-telemetry-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+.drive-telemetry-section h3 span {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  padding: 3px 8px;
+  border-radius: 100px;
+  background: var(--secondary);
+}
+.drive-energy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 12px;
+}
+.drive-energy-grid small,
+.drive-energy-grid p,
+.drive-chart-legend,
+.drive-telemetry-note,
+.drive-telemetry-empty,
+.drive-soc-summary,
+.drive-telemetry-loading {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.drive-energy-grid strong {
+  display: block;
+  font-size: 1.65rem;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0;
+}
+.drive-energy-grid em {
+  display: block;
+  font-style: normal;
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+}
+.drive-energy-recovery {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.drive-energy-recovery strong {
+  color: var(--battery-color);
+}
+.drive-telemetry-note {
+  margin-top: 18px;
+}
+.drive-battery-chart h4 {
+  font-size: 0.9375rem;
+  font-weight: 550;
+  margin-top: 22px;
+}
+.drive-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0;
+  list-style: none;
+}
+.drive-chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.drive-chart-legend li > span {
+  display: inline-block;
+  width: 18px;
+  border-top-width: 2px;
+}
+.drive-battery-chart .heater-chart {
+  height: 120px !important;
+}
+.drive-telemetry-empty {
+  padding: 24px 0;
+}
+.drive-soc-summary strong {
+  color: var(--battery-color);
+  font-weight: 550;
+}
+.drive-telemetry-loading {
+  margin: 0 0 24px;
+}
 .charge-summary {
   color: var(--battery-color);
   margin-bottom: 24px;

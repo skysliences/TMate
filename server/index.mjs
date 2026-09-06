@@ -16,6 +16,7 @@ import * as sql from './queries.mjs';
 import { createMapService } from './maps.mjs';
 import { validateConfig } from './config.mjs';
 import { readSoftware } from './software.mjs';
+import { readDriveDetail } from './drive-detail.mjs';
 import appPackage from '../package.json' with { type: 'json' };
 
 // TeslaMate timestamps are UTC timestamp-without-time-zone. Avoid server locale shifts.
@@ -143,7 +144,7 @@ export function createApp({
         return;
       }
       const match = path.match(
-        /^\/api\/cars\/(\d+)\/(dashboard|drives|charges)(?:\/(\d+)\/(track|curve|map))?$/,
+        /^\/api\/cars\/(\d+)\/(dashboard|drives|charges)(?:\/(\d+)\/(track|curve|map|detail))?$/,
       );
       if (!match) {
         json(res, 404, { error: '接口不存在' });
@@ -160,11 +161,16 @@ export function createApp({
         const recordId = positiveInt(match[3]);
         const kind = match[4];
         if (
-          (mode === 'drives' && !['track', 'map'].includes(kind)) ||
+          (mode === 'drives' && !['track', 'map', 'detail'].includes(kind)) ||
           (mode === 'charges' && kind !== 'curve') ||
           mode === 'dashboard'
         ) {
           json(res, 404, { error: '接口不存在' });
+          return;
+        }
+        if (kind === 'detail') {
+          const detail = await readDriveDetail(pool, id, recordId);
+          json(res, detail ? 200 : 404, detail || { error: '行程不存在或尚未结束' });
           return;
         }
         const points = await query(

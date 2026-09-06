@@ -7,6 +7,7 @@ COPY server/package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --chown=node:node server/index.mjs server/config.mjs server/domain.mjs server/address-label.mjs server/maps.mjs server/map-geometry.mjs server/mqtt.mjs server/queries.mjs server/sessions.mjs ./server/
 COPY --chown=node:node server/software.mjs server/mqtt-cache.mjs ./server/
+COPY --chown=node:node server/drive-detail.mjs ./server/
 COPY --chown=node:node deploy/smoke.mjs ./deploy/smoke.mjs
 COPY --chown=node:node deploy/pair-device.mjs ./deploy/pair-device.mjs
 COPY --chown=node:node scripts/check-config.mjs ./scripts/check-config.mjs
