@@ -9,8 +9,10 @@ import {
 } from '@/components/ui/chart';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ChartErrorBoundary } from '@/components/chart-error-boundary';
 import { api, type Connection } from '@/lib/api';
-import { dateLabel, fmt, type Drive } from '@/lib/data';
+import { fmt, type Drive } from '@/lib/data';
+import { chartTimeLabel, chartTooltipLabel } from '@/lib/chart-time';
 import {
   chartSeries,
   demoDriveDetail,
@@ -26,7 +28,7 @@ const sensors: Record<BatteryKey, { label: string; color: string }> = {
   heater: { label: '电池加热', color: '#b56b22' },
 };
 
-function BatteryChart({
+export function BatteryChart({
   title,
   fields,
   data,
@@ -81,9 +83,7 @@ function BatteryChart({
               type="number"
               scale="time"
               domain={['dataMin', 'dataMax']}
-              tickFormatter={(v) =>
-                dateLabel(new Date(v).toISOString(), true).split(' ')[1]
-              }
+              tickFormatter={(v) => chartTimeLabel(v)}
               minTickGap={35}
               axisLine={false}
               tickLine={false}
@@ -103,9 +103,7 @@ function BatteryChart({
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  labelFormatter={(v) =>
-                    dateLabel(new Date(Number(v)).toISOString(), true)
-                  }
+                  labelFormatter={chartTooltipLabel}
                   formatter={(value, name) => (
                     <span>
                       {sensors[name as BatteryKey]?.label}：
@@ -257,24 +255,31 @@ export function DriveTelemetry({
             <strong>{fmt(soc.at(-1)!.value, 0)}%</strong>
           </p>
         )}
-        <BatteryChart
-          title="电量变化（%）"
-          fields={['battery', 'usableBattery']}
-          data={battery}
-          unit="%"
-        />
-        <BatteryChart
-          title="续航变化（km）"
-          fields={['ratedRange', 'estimatedRange']}
-          data={battery}
-          unit="km"
-        />
-        <BatteryChart
-          title="电池加热状态"
-          fields={['heater']}
-          data={battery}
-          unit="state"
-        />
+        {[
+          {
+            title: '电量变化（%）',
+            fields: ['battery', 'usableBattery'],
+            unit: '%',
+          },
+          {
+            title: '续航变化（km）',
+            fields: ['ratedRange', 'estimatedRange'],
+            unit: 'km',
+          },
+          { title: '电池加热状态', fields: ['heater'], unit: 'state' },
+        ].map(({ title, fields, unit }) => (
+          <ChartErrorBoundary
+            key={`${carId}-${record.id}-${title}`}
+            title={title}
+          >
+            <BatteryChart
+              title={title}
+              fields={fields as BatteryKey[]}
+              data={battery}
+              unit={unit as '%' | 'km' | 'state'}
+            />
+          </ChartErrorBoundary>
+        ))}
         <p className="drive-telemetry-note">
           按本次行程的历史采样绘制，不代表当前车辆状态，也不是电池健康度。
           {downsampled ? '长行程已抽样，保留各项首末记录。' : ''}超过 3
