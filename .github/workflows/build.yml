@@ -28,7 +28,7 @@ jobs:
       - run: npm run build:web
       - run: node scripts/ci-version.mjs
       - run: npm run package:source
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: TMate-source
           path: outputs/TMate-*-source.zip
@@ -60,7 +60,7 @@ jobs:
           ANDROID_STORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_STORE_PASSWORD || '' }}
           ANDROID_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_PASSWORD || '' }}
           ANDROID_KEY_ALIAS: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_ALIAS || '' }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: TMate-Android
           path: outputs/*.apk
