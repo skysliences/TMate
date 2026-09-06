@@ -13,6 +13,9 @@ void test('configuration templates fail closed until users fill their own secret
   assert.throws(() => validateConfig(template), /API_KEY/);
   const valid = { ...template, API_KEY: 'a'.repeat(64), DATABASE_URL: `postgresql://tmate_reader:${'b'.repeat(64)}@database:5432/teslamate` };
   assert.equal(validateConfig(valid), true);
+  const check = execFileSync(process.execPath, ['scripts/check-config.mjs', '--environment'], { env: { ...process.env, ...valid }, encoding: 'utf8' });
+  assert.match(check, /配置检查通过/);
+  assert.ok(!check.includes(valid.API_KEY) && !check.includes(valid.DATABASE_URL));
   assert.throws(() => validateConfig({ ...valid, AMAP_KEY: 'CHANGE_ME' }), /AMAP_KEY/);
   assert.throws(() => validateConfig({ ...valid, WEB_ORIGIN: 'https://example.com/' }), /WEB_ORIGIN/);
   assert.throws(() => validateConfig({ ...valid, ALLOWED_ORIGINS: '*' }), /ALLOWED_ORIGINS/);

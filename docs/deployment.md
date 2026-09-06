@@ -155,7 +155,7 @@ python3 scripts/create-readonly-role.py --env .env --container YOUR_DATABASE_CON
 docker compose config --quiet
 docker compose build tmate
 # 容器中的 Node 运行离线配置校验，不需要宿主机安装 Node
-docker compose run --rm -T --no-deps -v "$PWD/.env:/run/tmate.env:ro" tmate node scripts/check-config.mjs /run/tmate.env
+docker compose run --rm -T --no-deps tmate node scripts/check-config.mjs --environment
 docker compose up -d --wait tmate
 docker compose ps
 curl -f http://127.0.0.1:8787/api/health
