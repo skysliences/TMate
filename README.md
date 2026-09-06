@@ -18,6 +18,32 @@
 
 TMate 不提供车辆控制，不主动唤醒车辆，不读取 TeslaMate 登录令牌表。高德 Key 仅在服务端使用；未填写时可以查看车辆历史，但没有高德底图与详细中文地址。
 
+## 界面预览
+
+以下为 TMate 1.1.0 的实际网页截图，全部使用内置演示数据，不包含真实车辆、行程或账户信息。H5 为手机尺寸的浏览器视口截图，不代表原生 App 真机截图。
+
+### PC · 桌面端
+
+概览：电量、续航、里程、能耗与充电费用。
+
+![TMate PC 概览：电量、续航和驾驶里程图表](docs/screenshots/pc-overview.jpg)
+
+电池：记录电量、额定续航与满电续航估算趋势。
+
+![TMate PC 电池：电量指标与满电额定续航趋势](docs/screenshots/pc-battery.jpg)
+
+### H5 · 手机网页
+
+点击图片可查看原图。底部固定玻璃导航支持触摸滑动切换。
+
+| 概览 | 行程 |
+| --- | --- |
+| [<img src="docs/screenshots/h5-overview.jpg" alt="TMate H5 概览与固定底部导航" width="300" />](docs/screenshots/h5-overview.jpg) | [<img src="docs/screenshots/h5-drives.jpg" alt="TMate H5 行程记录列表" width="300" />](docs/screenshots/h5-drives.jpg) |
+
+| 充电 | 电池 |
+| --- | --- |
+| [<img src="docs/screenshots/h5-charges.jpg" alt="TMate H5 充电记录与费用" width="300" />](docs/screenshots/h5-charges.jpg) | [<img src="docs/screenshots/h5-battery.jpg" alt="TMate H5 电池指标与续航趋势" width="300" />](docs/screenshots/h5-battery.jpg) |
+
 ## 从这里开始
 
 | 你的情况 | 下一步 |
