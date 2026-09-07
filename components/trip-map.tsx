@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DetailHelp } from '@/components/detail-help';
 import { api, type Connection } from '@/lib/api';
 type Frame = {
   image: string;
@@ -43,7 +44,12 @@ export function TripMap({
   return (
     <section className="trip-map" aria-label="高德行程地图">
       <div className="trip-map-toolbar">
-        <strong>行程地图</strong>
+        <h3 className="detail-module-title">
+          行程地图
+          <DetailHelp title="行程地图">
+            高德地图底图，蓝点为起点、深色点为终点，北向上。轨迹按本次行程采样在本地转换到高德坐标系后叠加，不修改原始坐标，也不是导航规划路线。支持全程、起点、终点和缩放，暂不支持拖动平移。
+          </DetailHelp>
+        </h3>
         <div>
           <Button
             variant="outline"
@@ -175,9 +181,6 @@ export function TripMap({
           查看终点
         </Button>
       </div>
-      <p className="field-help">
-        高德地图 · 蓝点起点 / 深色点终点 · 轨迹已转换至高德坐标系
-      </p>
     </section>
   );
 }

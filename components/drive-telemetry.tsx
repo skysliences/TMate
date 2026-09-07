@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChartErrorBoundary } from '@/components/chart-error-boundary';
+import { DetailHelp } from '@/components/detail-help';
 import { api, type Connection } from '@/lib/api';
 import { fmt, type Drive } from '@/lib/data';
 import { chartTimeAxis, chartTooltipLabel } from '@/lib/chart-time';
@@ -56,7 +57,21 @@ export function BatteryChart({
   );
   return (
     <div className="drive-battery-chart">
-      <h4>{title}</h4>
+      <h4 className="detail-module-title">
+        {title}
+        <DetailHelp title={title}>
+          {unit === '%'
+            ? '纵轴按本次记录局部放大，范围始终在 0–100% 内。电量 SOC 与可用电量数值相同时，两条曲线会重合，不人为错开。'
+            : unit === 'km'
+              ? '显示车辆上报的额定续航和预估续航历史记录；两者估算口径不同，不代表实际还能行驶的距离。'
+              : '显示本次行程中的电池加热开关记录，不代表当前开关状态。未上报不等于关闭。'}
+        </DetailHelp>
+        {hasData &&
+          unit === '%' &&
+          (levelDomain[0] > 0 || levelDomain[1] < 100) && (
+            <span className="detail-module-badge">局部放大</span>
+          )}
+      </h4>
       <ul className="drive-chart-legend" aria-label={`${title}图例`}>
         {fields.map((key, i) => (
           <li key={key}>
@@ -72,12 +87,6 @@ export function BatteryChart({
           </li>
         ))}
       </ul>
-      {hasData && unit === '%' && (
-        <p className="drive-telemetry-note">
-          {levelDomain[0] > 0 || levelDomain[1] < 100 ? '纵轴局部放大 · ' : ''}
-          数值相同时，两条曲线会重合
-        </p>
-      )}
       {hasData ? (
         <ChartContainer
           className={`detail-chart${unit === 'state' ? ' heater-chart' : ''}`}
@@ -180,6 +189,84 @@ export function BatteryChart({
   );
 }
 
+export function DriveEnergy({ energy }: { energy: DriveDetailData['energy'] }) {
+  const partial = energy.netScope === 'partial';
+  const byPower = energy.netMethod === 'power';
+  const netMissing =
+    energy.netUnavailable === 'no-efficiency'
+      ? '缺少能耗系数和可积分功率记录'
+      : '缺少起止额定续航和可积分功率记录';
+  const coverage =
+    energy.recoveryCoverage === null
+      ? '覆盖率未知'
+      : energy.recoveryCoverage > 0 && energy.recoveryCoverage < 0.001
+        ? '覆盖行程不足 0.1%'
+        : `覆盖行程 ${fmt(energy.recoveryCoverage * 100, 1)}%`;
+  return (
+    <section className="drive-telemetry-section" aria-label="行程能量">
+      <h3 className="detail-module-title">
+        能量
+        <DetailHelp title="能量">
+          优先用起止额定续航之差 × TeslaMate
+          车辆能耗系数估算。缺少系数或续航时，改用本次行程的原始功率（kW）与采样时间积分：相邻功率取平均
+          × 秒数 ÷
+          3600，正值耗电、负值回收。净耗电已包含回收，不再重复扣减。功率积分不等同于电表实测或完整的电池总耗电，可能遗漏未上报的车内用电。{' '}
+          只连接间隔不超过 5
+          秒且两端功率有效的采样；较长缺口、空值和行程两端未覆盖的时间都不补算。有缺口时仅显示「有效片段净耗电」，不拿片段电量除以全程里程。完整估算的平均净能耗
+          = 净耗电 ÷ 行程里程 × 100。动能回收只统计同一批有效片段的负功率部分。
+        </DetailHelp>
+        <span className="detail-module-badge">估算</span>
+      </h3>
+      <div className="drive-energy-grid">
+        <div>
+          <small>{partial ? '有效片段净耗电' : '净耗电量'}</small>
+          <strong>
+            {fmt(energy.netKwh, 2)}
+            <em>kWh</em>
+          </strong>
+          <p>
+            {energy.netKwh === null
+              ? netMissing
+              : byPower
+                ? `功率积分 · ${coverage}`
+                : '额定续航估算'}
+          </p>
+        </div>
+        <div>
+          <small>平均净能耗</small>
+          <strong>
+            {fmt(energy.consumptionKwh100Km, 1)}
+            <em>kWh/100 km</em>
+          </strong>
+          <p>
+            {energy.consumptionKwh100Km === null
+              ? energy.netKwh === null
+                ? netMissing
+                : partial
+                  ? '功率记录有缺口，暂不估算全程平均值'
+                  : '缺少有效行驶里程'
+              : `${fmt(energy.consumptionKwh100Km * 10, 0)} Wh/km`}
+          </p>
+        </div>
+        <div className="drive-energy-recovery">
+          <small>动能回收 · 有效片段</small>
+          <strong>
+            {fmt(energy.recoveredKwh, 2)}
+            <em>kWh</em>
+          </strong>
+          <p>
+            {energy.recoveredKwh === null
+              ? energy.recoveryUnavailable === 'sparse-power'
+                ? '功率采样间隔过长，无法可靠估算'
+                : '未记录功率，无法估算'
+              : `功率积分 · ${coverage}`}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function DriveTelemetry({
   record,
   connection,
@@ -219,17 +306,7 @@ export function DriveTelemetry({
       </div>
     );
   const { energy, battery } = query.data;
-  const netMissing =
-    energy.netUnavailable === 'no-efficiency'
-      ? 'TeslaMate 尚未提供车辆能耗系数'
-      : '缺少行程起止额定续航记录';
   const soc = battery.series.battery;
-  const coverage =
-    energy.recoveryCoverage === null
-      ? '覆盖率未知'
-      : energy.recoveryCoverage > 0 && energy.recoveryCoverage < 0.001
-        ? '覆盖行程不足 0.1%'
-        : `覆盖行程 ${fmt(energy.recoveryCoverage * 100, 1)}%`;
   const downsampled = Object.keys(battery.series).some(
     (key) =>
       battery.sampleCounts[key as BatteryKey] >
@@ -237,55 +314,16 @@ export function DriveTelemetry({
   );
   return (
     <>
-      <section className="drive-telemetry-section" aria-label="行程能量">
-        <h3>
-          能量<span>估算</span>
-        </h3>
-        <div className="drive-energy-grid">
-          <div>
-            <small>净耗电量</small>
-            <strong>
-              {fmt(energy.netKwh, 2)}
-              <em>kWh</em>
-            </strong>
-            <p>{energy.netKwh === null ? netMissing : '按额定续航变化估算'}</p>
-          </div>
-          <div>
-            <small>平均净能耗</small>
-            <strong>
-              {fmt(energy.consumptionKwh100Km, 1)}
-              <em>kWh/100 km</em>
-            </strong>
-            <p>
-              {energy.consumptionKwh100Km === null
-                ? energy.netKwh === null
-                  ? netMissing
-                  : '缺少有效行驶里程'
-                : `${fmt(energy.consumptionKwh100Km * 10, 0)} Wh/km`}
-            </p>
-          </div>
-          <div className="drive-energy-recovery">
-            <small>动能回收 · 有效片段</small>
-            <strong>
-              {fmt(energy.recoveredKwh, 2)}
-              <em>kWh</em>
-            </strong>
-            <p>
-              {energy.recoveredKwh === null
-                ? energy.recoveryUnavailable === 'sparse-power'
-                  ? '功率采样间隔过长，无法可靠估算'
-                  : '未记录功率，无法估算'
-                : `按连续功率片段估算 · ${coverage}`}
-            </p>
-          </div>
-        </div>
-        <p className="drive-telemetry-note">
-          净耗电已经包含动能回收的影响，不要再次扣减。回收仅统计间隔不超过 1.5
-          秒的有效功率片段，缺失部分不补算，不等同于整段行程的完整回收量。
-        </p>
-      </section>
+      <DriveEnergy energy={energy} />
       <section className="drive-telemetry-section" aria-label="行程电池曲线">
-        <h3>电池曲线</h3>
+        <h3 className="detail-module-title">
+          电池曲线
+          <DetailHelp title="电池曲线">
+            按本次行程的历史采样绘制，不代表当前车辆状态，也不是电池健康度。
+            {downsampled ? '长行程已抽样，保留各项首末记录。' : ''}
+            超过 3 分钟没有记录的区间留空；未上报的项目显示「未记录」。
+          </DetailHelp>
+        </h3>
         {soc.length > 0 && (
           <p className="drive-soc-summary">
             首条记录 <strong>{fmt(soc[0].value, 0)}%</strong>
@@ -318,11 +356,6 @@ export function DriveTelemetry({
             />
           </ChartErrorBoundary>
         ))}
-        <p className="drive-telemetry-note">
-          按本次行程的历史采样绘制，不代表当前车辆状态，也不是电池健康度。
-          {downsampled ? '长行程已抽样，保留各项首末记录。' : ''}超过 3
-          分钟没有记录的区间留空；未上报的项目显示「未记录」。
-        </p>
       </section>
     </>
   );

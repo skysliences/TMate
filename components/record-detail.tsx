@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { NoData } from './data-views';
 import { TripMap } from './trip-map';
 import { DriveTelemetry } from './drive-telemetry';
+import { DetailHelp } from './detail-help';
 import { api, type Connection } from '@/lib/api';
 import {
   dateLabel,
@@ -93,6 +94,12 @@ function Track({ points }: { points: TrackPoint[] }) {
   ]);
   return (
     <div className="track-view">
+      <h3 className="detail-module-title">
+        行程地图
+        <DetailHelp title="行程地图">
+          演示轨迹不加载外部地图。蓝点为起点、深色点为终点，北向上；这不是导航规划路线。
+        </DetailHelp>
+      </h3>
       <svg
         viewBox="0 0 500 280"
         aria-label="行程轨迹示意，蓝点为起点，深色点为终点"
@@ -147,7 +154,6 @@ function Track({ points }: { points: TrackPoint[] }) {
           strokeWidth="3"
         />
       </svg>
-      <p className="field-help">轨迹示意 · 蓝点起点 / 深色点终点 · 北向上</p>
     </div>
   );
 }
@@ -322,8 +328,13 @@ export function RecordDetail({
                   ) : (
                     <Track points={query.data as TrackPoint[]} />
                   ))}
-                <h3 className="detail-chart-title">
+                <h3 className="detail-chart-title detail-module-title">
                   {detail.type === 'drive' ? '车速变化' : '充电功率'}
+                  {detail.type === 'drive' && (
+                    <DetailHelp title="车速变化">
+                      按本次行程有效定位采样中的车速绘制，不代表当前车速。长行程会抽样以控制数据量。
+                    </DetailHelp>
+                  )}
                 </h3>
                 <ChartContainer
                   className="detail-chart"
@@ -402,11 +413,11 @@ export function RecordDetail({
             ) : (
               <NoData title="该记录没有详细采样数据" />
             )}
-            <p className="note">
-              {detail.type === 'drive'
-                ? `行程耗电由额定续航变化 × 车辆能耗系数估算。${connection ? '地图底图由高德提供，轨迹在本地叠加；路线按采样绘制，不代表导航规划。' : '演示轨迹不加载外部地图。'}`
-                : '电网用电与充入电量可能不同，差额包括充电过程中的损耗。'}
-            </p>
+            {detail.type === 'charge' && (
+              <p className="note">
+                电网用电与充入电量可能不同，差额包括充电过程中的损耗。
+              </p>
+            )}
           </div>
         )}
       </SheetContent>

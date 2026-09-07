@@ -2,12 +2,14 @@
 
 ## 数据口径
 
-- 行程净耗电无法计算时，`energy.netUnavailable` 返回 `no-efficiency`（缺少有效车辆能耗系数）或 `no-range`（缺少起止额定续航），界面显示相应原因；不会套用其他车型系数或编造耗电。计算正常时为 null。
+- 行程详情优先使用 TeslaMate 的额定续航和车辆能耗系数估算；缺少任一项时，回退到本次行程的原始功率积分。两种方法均不可用时，`energy.netUnavailable` 返回 `no-efficiency` 或 `no-range`，界面同时说明缺少可积分功率。不会套用其他车型系数、假定电池容量或反写 TeslaMate；有估算值时为 null。
 - 所有日期按 `Asia/Shanghai` 显示；统计范围包括今天在内的最近 7 / 30 / 90 个自然日。
 - 统计仅包含完成的行程和充电。正在行驶、充电等状态由 MQTT 提供；当前进行中的记录不会计入已完成记录合计。
-- 耗电估算 = `(start_rated_range_km - end_rated_range_km) × cars.efficiency`。平均能耗按有有效估算值的行程里程加权。缺少系数时显示 `—`；净回收能量可能为负。
+- 概览和行程列表的原有耗电估算 = `(start_rated_range_km - end_rated_range_km) × cars.efficiency`；平均能耗按有有效估算值的行程里程加权。此次功率回退仅用于单次行程详情，列表/概览缺少系数时仍显示 `—`，避免把大量功率积分查询加入列表请求。净回收时保留负值。
 - 行程详情「能量」展示净耗电量（kWh）、平均净能耗（kWh/100 km，同时给出 Wh/km）与有效片段内的动能回收估算。净耗电已包含回收的影响，不再次扣除回收值；净耗电为负时保留负值。它们不是电表实测值。
-- 动能回收先在服务端读取本车、本次已完成行程时间内的原始功率采样，再对相邻有效采样的负功率部分做线性积分；跨越零功率时只计负值区间。时间差必须大于 0 且不超过 1.5 秒，不跨越空功率、重复时刻或长时间断点；使用完整秒数，不对分钟取余。未收到功率或采样过稀时返回 `null` 并说明原因，不以 0 代替。只有有效区间确实未出现负功率时才可返回 0。
+- 功率回退的净耗电 = `Σ((前一功率 + 当前功率) / 2 × 实际间隔秒数 / 3600)`，功率单位 kW、结果 kWh。正负功率一起积分，已包含回收影响。只连接间隔大于 0 且不超过 5 秒的相邻有效功率记录，不跳过空功率去连接更远的有效点，不对长缺口补值，不按覆盖率放大电量，不从已抽样曲线反算。5 秒是 TMate 明确的短间隔线性近似上限，不代表车辆功率在间隔内实际恒定，也不是 TeslaMate 的车辆系数计算方法。
+- 功率积分完整覆盖行程时，`netScope=trip`，平均净能耗为净耗电 / 本次里程 × 100；缺少或零里程时平均值为 null。有长缺口、空功率或未覆盖行程两端时，`netScope=partial`，页面明确显示「有效片段净耗电」，平均值为 null，避免拿片段电量除以全程里程。时间比较只允许 1 毫秒数值误差，不把 99% 覆盖当作完整数据。功率法可能遗漏未上报的车内用电，不等同于完整电池耗电、仪表或电表读数。
+- 动能回收使用同一批不超过 5 秒的相邻功率片段，积分负功率部分；跨越零功率时只计负值三角形区间。1.2.4 起与净功率积分统一短间隔规则（此前只统计不超过 1.5 秒的片段）。未收到功率或采样过稀时返回 `null` 并说明原因，不以 0 代替。只有有效区间确实未出现负功率时才可返回 0。
 - 回收覆盖率 = 有效连续功率区间总秒数 / 本次行程时长。只展示「动能回收 · 有效片段」，不把局部记录冒充整段行程的完整回收电量。不从抽样后的地图或曲线反算能量；与 Grafana 的负功率点筛选/积分方法可能略有差异。
 - 行程电池曲线包含电量 SOC、可用电量、额定续航、预估续航及电池加热开关。独立于 GPS：无定位也能展示已有电池采样；可选列不存在时只缺失对应曲线。按各传感器独立抽样，每项最多 1002 点，保留各自首末记录；不因密集电量采样丢掉稀疏的加热或续航记录。时间轴按真实时间绘制，超过 3 分钟没有该项记录的区间断开，单点保留为点。首末电量指首末有效采样，不冒充精确出发/结束时刻，也不是电池 SOH。
 - 充电费用优先读取 TeslaMate 的 `cost`（包含真实的 0 元）。在设置保存电费单价后，只补算 `cost` 缺失的记录：优先用电网用电量 × 单价，电网量无效时用充入电量 × 单价，标明「估算」。数据均缺失时仍显示未记录。单价留空关闭估算，0 表示按 0 估算；最多 4 位小数，范围 0–1000。
@@ -40,6 +42,8 @@
 
 连接池默认只读，查询参数化并设置 15 秒超时。还应使用独立 SELECT-only 数据库账号。API 不会返回数据库连接串或访问密钥。
 
-行程详情返回 `{ energy, battery }`。`energy` 包含 `netKwh`、`consumptionKwh100Km`、`recoveredKwh`、`recoveryCoverage`（0–1 或 null）、`recoveryUnavailable`（`no-power` / `sparse-power` / null）。`battery.series` 的键为 `battery`、`usableBattery`、`ratedRange`、`estimatedRange`、`heater`，每项是 `{date,value}[]`，日期为 UTC ISO 字符串；加热值为 0/1。`battery.sampleCounts` 给出每项抽样前的有效记录数。新端点不返回坐标，不调用高德，不增加数据库写权限；旧轨迹、地图与充电接口保持兼容。
+行程详情返回 `{ energy, battery }`。`energy` 包含 `netKwh`、`netMethod`（`rated-range` / `power` / null）、`netScope`（`trip` / `partial` / null）、`netUnavailable`、`consumptionKwh100Km`、`recoveredKwh`、`recoveryCoverage`（0–1 或 null，功率积分覆盖率）、`recoveryUnavailable`（`no-power` / `sparse-power` / null）。`netKwh` 必须结合 `netScope` 使用：partial 只代表已记录的有效片段。`battery.series` 的键为 `battery`、`usableBattery`、`ratedRange`、`estimatedRange`、`heater`，每项是 `{date,value}[]`，日期为 UTC ISO 字符串；加热值为 0/1。`battery.sampleCounts` 给出每项抽样前的有效记录数。端点不返回坐标，不调用高德，不增加数据库写权限；旧轨迹、地图与充电接口保持兼容。界面上的数据口径说明位于模块标题旁的问号按钮中，支持点击、触摸与键盘操作，不放在模块底部。
+
+参考：[TeslaMate 官方能耗说明](https://docs.teslamate.org/docs/faq/#why-are-no-consumption-values-displayed-in-grafana)、[官方行程详情仪表盘](https://github.com/teslamate-org/teslamate/blob/master/grafana/dashboards/internal/drive-details.json)。功率回退与完整度判断是 TMate 的额外估算，不应当作 TeslaMate 或车辆直接上报的行程耗电。
 
 设备授权另有 `POST /api/pairings`（仅服务密钥可生成链接）、`POST /api/session`（同源配对或密钥交换）与 `DELETE /api/session`（退出当前浏览器）。这些接口不修改 TeslaMate 数据。配对接口校验来源、请求体格式与大小；会话验证签名与有效期。

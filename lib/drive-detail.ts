@@ -10,6 +10,9 @@ export type BatterySample = { date: string; value: number };
 export type DriveDetailData = {
   energy: {
     netKwh: number | null;
+    // Optional for compatibility with servers before the power fallback.
+    netMethod?: 'rated-range' | 'power' | null;
+    netScope?: 'trip' | 'partial' | null;
     netUnavailable: 'no-efficiency' | 'no-range' | null;
     consumptionKwh100Km: number | null;
     recoveredKwh: number | null;
@@ -101,6 +104,8 @@ export function demoDriveDetail(record: Drive): DriveDetailData {
   return {
     energy: {
       netKwh: record.energy,
+      netMethod: record.energy === null ? null : 'rated-range',
+      netScope: record.energy === null ? null : 'trip',
       netUnavailable: record.energy === null ? 'no-efficiency' : null,
       consumptionKwh100Km:
         record.energy !== null && record.distance > 0

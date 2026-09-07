@@ -8,6 +8,11 @@ import react from '@vitejs/plugin-react';
 
 let server;
 let BatteryChart;
+let DriveEnergy;
+let DetailHelp;
+let Popover;
+let PopoverTrigger;
+let PopoverContent;
 let ChartContainer;
 let ChartTooltip;
 let XAxis;
@@ -26,8 +31,12 @@ before(async () => {
     optimizeDeps: { noDiscovery: true, include: [] },
     appType: 'custom',
   });
-  ({ BatteryChart } = await server.ssrLoadModule(
+  ({ BatteryChart, DriveEnergy } = await server.ssrLoadModule(
     '/components/drive-telemetry.tsx',
+  ));
+  ({ DetailHelp } = await server.ssrLoadModule('/components/detail-help.tsx'));
+  ({ Popover, PopoverTrigger, PopoverContent } = await server.ssrLoadModule(
+    '/components/ui/popover.tsx',
   ));
   ({ ChartContainer, ChartTooltip } = await server.ssrLoadModule(
     '/components/ui/chart.tsx',
@@ -213,4 +222,92 @@ void test('chart error fallback is local, readable and offers a reset', () => {
   };
   fallback.props.children[1].props.onClick();
   assert.equal(boundary.render(), child);
+});
+
+void test('module help is a named click/tap button next to its heading, hidden by default', () => {
+  const help = DetailHelp({
+    title: '能量',
+    children: '只在点击后出现的模块说明',
+  });
+  assert.equal(help.type, Popover);
+  const trigger = findElement(help, PopoverTrigger);
+  assert.equal(trigger.props.type, 'button');
+  assert.equal(trigger.props['aria-label'], '能量说明');
+  assert.equal(findElement(help, PopoverContent).props.align, 'start');
+  const html = renderToStaticMarkup(help);
+  assert.match(html, /<button[^>]*aria-label="能量说明"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.ok(!html.includes('只在点击后出现的模块说明'));
+});
+
+const estimatedEnergy = {
+  netKwh: 0.85,
+  netMethod: 'power',
+  netScope: 'trip',
+  netUnavailable: null,
+  consumptionKwh100Km: 17,
+  recoveredKwh: 0.15,
+  recoveryCoverage: 1,
+  recoveryUnavailable: null,
+};
+void test('power-derived energy shows the source, value and units without a module footer', () => {
+  const html = renderToStaticMarkup(
+    createElement(DriveEnergy, { energy: estimatedEnergy }),
+  );
+  assert.match(html, /0\.85/);
+  assert.match(html, /17\.0/);
+  assert.match(html, /功率积分/);
+  assert.match(html, /100\.0%/);
+  assert.match(html, /<h3[^>]*>[\s\S]*aria-label="能量说明"[\s\S]*<\/h3>/);
+  assert.ok(!html.includes('drive-telemetry-note'));
+  assert.ok(!html.includes('缺少能耗系数'));
+});
+
+void test('partial power data is explicitly a fragment, not a whole-trip average', () => {
+  const html = renderToStaticMarkup(
+    createElement(DriveEnergy, {
+      energy: {
+        ...estimatedEnergy,
+        netScope: 'partial',
+        consumptionKwh100Km: null,
+        recoveryCoverage: 0.861,
+      },
+    }),
+  );
+  assert.match(html, /有效片段净耗电/);
+  assert.match(html, /86\.1%/);
+  assert.match(html, /功率记录有缺口/);
+  assert.ok(!html.includes('17.0'));
+});
+
+void test('zero and negative energy stay visible, while genuinely missing power has an explanation', () => {
+  for (const value of [0, -0.5]) {
+    const html = renderToStaticMarkup(
+      createElement(DriveEnergy, {
+        energy: {
+          ...estimatedEnergy,
+          netKwh: value,
+          consumptionKwh100Km: value * 10,
+        },
+      }),
+    );
+    assert.match(html, new RegExp(value.toFixed(2).replace('.', '\\.')));
+    assert.ok(!html.includes('缺少能耗系数'));
+  }
+  const missing = renderToStaticMarkup(
+    createElement(DriveEnergy, {
+      energy: {
+        ...estimatedEnergy,
+        netKwh: null,
+        netScope: null,
+        netMethod: null,
+        netUnavailable: 'no-efficiency',
+        consumptionKwh100Km: null,
+        recoveredKwh: null,
+        recoveryCoverage: 0,
+        recoveryUnavailable: 'no-power',
+      },
+    }),
+  );
+  assert.match(missing, /缺少能耗系数和可积分功率记录/);
 });

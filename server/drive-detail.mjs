@@ -1,10 +1,14 @@
 import { numberOrNull } from './domain.mjs';
 
+// Streaming records can be several seconds apart. Linearly integrate only
+// short, adjacent samples; never bridge nulls or extrapolate long gaps.
+export const MAX_POWER_INTERVAL_SECONDS = 5;
+
 export const driveEnergySql = `SELECT d.distance, c.efficiency AS coefficient,
   CASE WHEN c.efficiency > 0 THEN
     (d.start_rated_range_km - d.end_rated_range_km) * c.efficiency END AS net,
   extract(epoch FROM d.end_date - d.start_date) AS duration,
-  r.samples, r.intervals, r.seconds, r.recovered
+  r.samples, r.intervals, r.seconds, r.recovered, r.power_net
   FROM drives d JOIN cars c ON c.id=d.car_id
   LEFT JOIN LATERAL (
     WITH samples AS (
@@ -16,10 +20,11 @@ export const driveEnergySql = `SELECT d.distance, c.efficiency AS coefficient,
         extract(epoch FROM date - lag(date) OVER w) AS dt
       FROM samples WINDOW w AS (ORDER BY date,id)
     ), valid AS (
-      SELECT *, dt > 0 AND dt <= 1.5 AND power IS NOT NULL AND previous IS NOT NULL AS usable
+      SELECT *, dt > 0 AND dt <= ${MAX_POWER_INTERVAL_SECONDS} AND power IS NOT NULL AND previous IS NOT NULL AS usable
       FROM intervals
     ) SELECT count(power) AS samples, count(*) FILTER (WHERE usable) AS intervals,
       sum(dt) FILTER (WHERE usable) AS seconds,
+      sum((power + previous) * dt / 7200) FILTER (WHERE usable) AS power_net,
       sum(CASE
         WHEN power <= 0 AND previous <= 0 THEN -(power + previous) * dt / 7200
         WHEN previous < 0 AND power > 0 THEN previous * previous / (power - previous) * dt / 7200
@@ -54,11 +59,23 @@ export async function readDriveDetail(pool, carId, driveId) {
     rows: [row],
   } = await pool.query(driveEnergySql, [carId, driveId]);
   if (!row) return null;
-  const net = numberOrNull(row.net);
+  const ratedNet = numberOrNull(row.net);
   const distance = numberOrNull(row.distance);
   const duration = numberOrNull(row.duration);
   const coveredSeconds = numberOrNull(row.seconds) ?? 0;
   const validIntervals = Number(row.intervals) || 0;
+  const powerNet = validIntervals > 0 ? numberOrNull(row.power_net) : null;
+  const net = ratedNet ?? powerNet;
+  const netMethod =
+    ratedNet !== null ? 'rated-range' : powerNet !== null ? 'power' : null;
+  const powerComplete =
+    duration > 0 && Math.abs(duration - coveredSeconds) <= 0.001;
+  const netScope =
+    net === null
+      ? null
+      : netMethod === 'power' && !powerComplete
+        ? 'partial'
+        : 'trip';
   const series = Object.fromEntries(
     ['battery', 'usableBattery', 'ratedRange', 'estimatedRange', 'heater'].map(
       (key) => [key, []],
@@ -83,6 +100,8 @@ export async function readDriveDetail(pool, carId, driveId) {
   return {
     energy: {
       netKwh: net,
+      netMethod,
+      netScope,
       netUnavailable:
         net !== null
           ? null
@@ -90,7 +109,9 @@ export async function readDriveDetail(pool, carId, driveId) {
             ? 'no-range'
             : 'no-efficiency',
       consumptionKwh100Km:
-        net !== null && distance > 0 ? (net / distance) * 100 : null,
+        net !== null && netScope === 'trip' && distance > 0
+          ? (net / distance) * 100
+          : null,
       recoveredKwh: validIntervals > 0 ? numberOrNull(row.recovered) : null,
       recoveryCoverage:
         duration > 0 ? Math.min(1, coveredSeconds / duration) : null,

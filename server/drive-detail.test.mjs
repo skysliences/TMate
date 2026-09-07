@@ -19,6 +19,8 @@ after(() => db.close());
 void test('legacy schemas, absent GPS, valid zeroes and UTC timestamps are supported', async () => {
   const data = await readDriveDetail(db, 1, 1);
   assert.equal(data.energy.netKwh, 1.5);
+  assert.equal(data.energy.netMethod, 'rated-range');
+  assert.equal(data.energy.netScope, 'trip');
   assert.equal(data.energy.consumptionKwh100Km, 15);
   assert.equal(data.energy.recoveredKwh, null);
   assert.equal(data.energy.recoveryUnavailable, 'no-power');
@@ -53,6 +55,11 @@ void test('recovery integrates raw adjacent power samples, including zero crossi
   assert.equal(data.energy.recoveryCoverage, 0.5);
   assert.equal(data.energy.recoveryUnavailable, null);
   assert.equal(data.energy.netKwh, -1.5);
+  assert.equal(
+    data.energy.netMethod,
+    'rated-range',
+    'Existing coefficient remains preferred over power',
+  );
   assert.equal(data.energy.consumptionKwh100Km, -7.5);
   assert.equal(data.battery.series.battery.length, 8);
   assert.equal(data.battery.series.heater[0].value, 0);
@@ -100,4 +107,87 @@ void test('sensor-specific downsampling preserves endpoints and sparse optional 
   );
   assert.ok(Math.abs(data.energy.recoveredKwh - 1) < 1e-10);
   assert.equal(data.energy.recoveryCoverage, 1);
+});
+
+void test('missing coefficient falls back to signed power with real elapsed seconds and preserves zero', async () => {
+  await db.exec(`
+    INSERT INTO drives VALUES (10,2,'2026-02-01','2026-02-01 00:00:05',2,200,190);
+    INSERT INTO positions(id,car_id,drive_id,date,power) VALUES
+      (5000,2,10,'2026-02-01',36),
+      (5001,2,10,'2026-02-01 00:00:03',-36),
+      (5002,2,10,'2026-02-01 00:00:05',36);
+  `);
+  const { energy } = await readDriveDetail(db, 2, 10);
+  assert.equal(energy.netKwh, 0);
+  assert.equal(energy.netMethod, 'power');
+  assert.equal(energy.netScope, 'trip');
+  assert.equal(energy.netUnavailable, null);
+  assert.equal(energy.consumptionKwh100Km, 0);
+  assert.equal(energy.recoveryCoverage, 1);
+  assert.ok(
+    Math.abs(energy.recoveredKwh - 0.0125) < 1e-10,
+    'Zero crossings integrate only the negative triangle',
+  );
+});
+
+void test('power fallback works without rated ranges, uses five-second boundaries and does not divide by zero distance', async () => {
+  await db.exec(`
+    INSERT INTO drives VALUES
+      (11,1,'2026-02-02','2026-02-02 00:00:10',5,NULL,NULL),
+      (12,2,'2026-02-02','2026-02-02 00:00:03',0,NULL,NULL);
+    INSERT INTO positions(id,car_id,drive_id,date,power) VALUES
+      (5010,1,11,'2026-02-02',36),(5011,1,11,'2026-02-02 00:00:05',36),(5012,1,11,'2026-02-02 00:00:10',36),
+      (5020,2,12,'2026-02-02',-36),(5021,2,12,'2026-02-02 00:00:03',-36);
+  `);
+  const positive = (await readDriveDetail(db, 1, 11)).energy;
+  assert.equal(positive.netMethod, 'power');
+  assert.equal(positive.netKwh, 0.1);
+  assert.equal(positive.consumptionKwh100Km, 2);
+  assert.equal(positive.recoveredKwh, 0);
+  const negative = (await readDriveDetail(db, 2, 12)).energy;
+  assert.equal(negative.netKwh, -0.03);
+  assert.equal(negative.netScope, 'trip');
+  assert.equal(negative.consumptionKwh100Km, null);
+});
+
+void test('long gaps yield only observed energy, never scaled-up totals or a whole-trip average', async () => {
+  await db.exec(`
+    INSERT INTO drives VALUES (13,2,'2026-02-03','2026-02-03 00:01:03',10,NULL,NULL);
+    INSERT INTO positions(id,car_id,drive_id,date,power) VALUES
+      (5030,2,13,'2026-02-03',36),(5031,2,13,'2026-02-03 00:00:03',36),
+      (5032,2,13,'2026-02-03 00:01:02',36),(5033,2,13,'2026-02-03 00:01:03',36),
+      (5034,1,13,'2026-02-03 00:00:04',999),(5035,2,13,'2026-02-03 00:01:04',999);
+  `);
+  const { energy } = await readDriveDetail(db, 2, 13);
+  assert.equal(energy.netKwh, 0.04);
+  assert.equal(energy.netScope, 'partial');
+  assert.equal(energy.netMethod, 'power');
+  assert.equal(energy.consumptionKwh100Km, null);
+  assert.ok(Math.abs(energy.recoveryCoverage - 4 / 63) < 1e-10);
+});
+
+void test('null power, missing endpoint times and duplicate timestamps cannot masquerade as complete telemetry', async () => {
+  await db.exec(`
+    INSERT INTO drives VALUES
+      (14,2,'2026-02-04','2026-02-04 00:00:03',1,NULL,NULL),
+      (15,2,'2026-02-05','2026-02-05 00:00:05',1,NULL,NULL),
+      (16,2,'2026-02-06','2026-02-06 00:00:01',1,NULL,NULL);
+    INSERT INTO positions(id,car_id,drive_id,date,power) VALUES
+      (5040,2,14,'2026-02-04',36),(5041,2,14,'2026-02-04 00:00:01',NULL),
+      (5042,2,14,'2026-02-04 00:00:02',36),(5043,2,14,'2026-02-04 00:00:03',36),
+      (5050,2,15,'2026-02-05 00:00:00.5',36),(5051,2,15,'2026-02-05 00:00:04.5',36),
+      (5060,2,16,'2026-02-06',36),(5061,2,16,'2026-02-06',36);
+  `);
+  const gap = (await readDriveDetail(db, 2, 14)).energy;
+  assert.equal(gap.netKwh, 0.01);
+  assert.equal(gap.netScope, 'partial');
+  assert.equal(gap.consumptionKwh100Km, null);
+  const edges = (await readDriveDetail(db, 2, 15)).energy;
+  assert.equal(edges.netKwh, 0.04);
+  assert.equal(edges.netScope, 'partial');
+  assert.equal(edges.recoveryCoverage, 0.8);
+  const duplicate = (await readDriveDetail(db, 2, 16)).energy;
+  assert.equal(duplicate.netKwh, null);
+  assert.equal(duplicate.netScope, null);
+  assert.equal(duplicate.netMethod, null);
 });
