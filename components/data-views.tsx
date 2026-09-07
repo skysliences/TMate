@@ -1,4 +1,6 @@
 'use client';
+import type { ReactNode } from 'react';
+import { DetailHelp } from '@/components/detail-help';
 import { chargeCost, chargingCostSummary } from '@/lib/electricity';
 import {
   ArrowUpRight,
@@ -34,6 +36,7 @@ import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty';
 import {
   fmt,
   summarize,
+  recentDrivingSummary,
   dateLabel,
   stateLabels,
   type Dashboard,
@@ -69,17 +72,22 @@ export function Metric({
   value,
   unit,
   note,
+  help,
 }: {
   icon: typeof Car;
   label: string;
   value: string;
   unit?: string;
   note: string;
+  help?: ReactNode;
 }) {
   return (
     <section className="metric panel">
       <div className="metric-label">
-        <span>{label}</span>
+        <span className="metric-title">
+          {label}
+          {help && <DetailHelp title={label}>{help}</DetailHelp>}
+        </span>
         <Icon size={18} />
       </div>
       <p>
@@ -205,7 +213,9 @@ export function ChargeRow({
         {fmt(c.energy)}
         <small>
           kWh ·{' '}
-          {cost.value == null ? '费用未记录' : `${cost.estimated ? '估算 ' : ''}${currency} ${fmt(cost.value, 2)}`}
+          {cost.value == null
+            ? '费用未记录'
+            : `${cost.estimated ? '估算 ' : ''}${currency} ${fmt(cost.value, 2)}`}
         </small>
       </div>
       <ChevronRight className="faint" size={16} />
@@ -230,6 +240,15 @@ export function Overview({
   onCharge: (c: Charge) => void;
 }) {
   const stats = summarize(data, days);
+  const recent = recentDrivingSummary(data, days);
+  const consumptionNote =
+    stats.consumption === null
+      ? stats.driveCount
+        ? '暂无能耗记录完整的行程'
+        : '所选时段没有已完成行程'
+      : stats.consumptionDriveCount === undefined
+        ? '按可用记录加权估算'
+        : `按 ${stats.consumptionDriveCount} 条完整记录计算${stats.consumptionExcludedDriveCount ? ` · ${stats.consumptionExcludedDriveCount} 条暂未计入` : ''}${stats.powerEstimatedDriveCount ? ' · 含功率估算' : ''}`;
   const s = data.status;
   const last = data.charges[0];
   const costs = chargingCostSummary(data, days, electricityPrice);
@@ -238,6 +257,28 @@ export function Overview({
     s.state === 'asleep' ? Moon : s.state === 'charging' ? Zap : Car;
   return (
     <>
+      <section className="overview-monthly-summary" aria-label="近30天驾驶统计">
+        <Metric
+          icon={Route}
+          label="近 30 天行程总数"
+          value={fmt(recent?.driveCount, 0)}
+          unit="次"
+          note={
+            recent ? '已完成行程 · 含今天' : '数据服务需升级以读取 30 天合计'
+          }
+        />
+        <Metric
+          icon={Gauge}
+          label="近 30 天总里程"
+          value={fmt(recent?.distance)}
+          unit="km"
+          note={
+            recent
+              ? '行程里程合计 · 北京时间'
+              : '数据服务需升级以读取 30 天合计'
+          }
+        />
+      </section>
       <div className="overview-grid">
         <section className="vehicle-panel">
           <div className="panel-top">
@@ -316,10 +357,19 @@ export function Overview({
       <div className="metrics-grid">
         <Metric
           icon={Gauge}
-          label="平均能耗 · 估算"
+          label={`近 ${days} 天平均能耗`}
           value={fmt(stats.consumption)}
           unit="kWh/100 km"
-          note="按额定续航变化估算"
+          note={consumptionNote}
+          help={
+            <>
+              按能耗估算完整的行程计算：净耗电合计 ÷ 对应行程里程合计 ×
+              100，不是各次能耗的简单平均。 优先使用 TeslaMate
+              的额定续航与能耗系数；缺少时采用与行程详情相同的功率积分。存在功率缺口的片段不参与全程平均，0
+              和负净耗电保留。 顶部行程数和总里程始终统计近 30
+              天的全部已完成行程，不受这里的时间筛选或列表分页影响。
+            </>
+          }
         />
         <Metric
           icon={Zap}
@@ -333,8 +383,16 @@ export function Overview({
           label="充电费用"
           value={`${currency} ${fmt(costs.value, 2)}`}
           note={
-            costs.needsServerUpdate ? '数据服务需升级，暂不合计估算费用' :
-            [costs.estimated ? `含 ${costs.estimated} 次估算` : '已记录费用合计', costs.missing ? `${costs.missing} 次费用未记录` : ''].filter(Boolean).join(' · ')
+            costs.needsServerUpdate
+              ? '数据服务需升级，暂不合计估算费用'
+              : [
+                  costs.estimated
+                    ? `含 ${costs.estimated} 次估算`
+                    : '已记录费用合计',
+                  costs.missing ? `${costs.missing} 次费用未记录` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
           }
         />
         <Metric
@@ -511,17 +569,33 @@ export function BatteryView({ data, days }: { data: Dashboard; days: number }) {
           ))}
         </div>
         <div className="detail-stats">
-          <div><small>车辆软件版本</small><strong>{data.status.version || '暂无记录'}</strong>
-            <small className="telemetry-time">{data.status.versionSource === 'database'
-              ? `TeslaMate 升级记录${data.status.versionRecordedAt ? ` · ${dateLabel(data.status.versionRecordedAt, true)}` : ''}`
-              : data.status.version ? `${data.status.versionSource === 'cache' ? '缓存的' : ''}MQTT 版本${data.status.versionReceivedAt ? ` · 收到于 ${dateLabel(data.status.versionReceivedAt, true)}` : ''}`
-              : data.status.versionUnavailable === 'permission' ? '只读账号需要增加 updates 表的 SELECT 权限'
-              : '尚无已完成升级记录，也未收到 MQTT 版本'}</small>
+          <div>
+            <small>车辆软件版本</small>
+            <strong>{data.status.version || '暂无记录'}</strong>
+            <small className="telemetry-time">
+              {data.status.versionSource === 'database'
+                ? `TeslaMate 升级记录${data.status.versionRecordedAt ? ` · ${dateLabel(data.status.versionRecordedAt, true)}` : ''}`
+                : data.status.version
+                  ? `${data.status.versionSource === 'cache' ? '缓存的' : ''}MQTT 版本${data.status.versionReceivedAt ? ` · 收到于 ${dateLabel(data.status.versionReceivedAt, true)}` : ''}`
+                  : data.status.versionUnavailable === 'permission'
+                    ? '只读账号需要增加 updates 表的 SELECT 权限'
+                    : '尚无已完成升级记录，也未收到 MQTT 版本'}
+            </small>
           </div>
-          <div><small>哨兵模式 · 最近已知状态</small><strong>{data.status.sentry == null ? '尚未收到' : data.status.sentry ? '已开启' : '已关闭'}</strong>
-            <small className="telemetry-time">{data.status.sentry == null
-              ? '等待 TeslaMate MQTT 上报；此项没有数据库历史记录'
-              : `${data.status.sentrySource === 'cache' ? '使用缓存 · ' : ''}${data.status.sentryReceivedAt ? `收到于 ${dateLabel(data.status.sentryReceivedAt, true)} · ` : ''}非实时确认，车辆休眠时可能不更新`}</small>
+          <div>
+            <small>哨兵模式 · 最近已知状态</small>
+            <strong>
+              {data.status.sentry == null
+                ? '尚未收到'
+                : data.status.sentry
+                  ? '已开启'
+                  : '已关闭'}
+            </strong>
+            <small className="telemetry-time">
+              {data.status.sentry == null
+                ? '等待 TeslaMate MQTT 上报；此项没有数据库历史记录'
+                : `${data.status.sentrySource === 'cache' ? '使用缓存 · ' : ''}${data.status.sentryReceivedAt ? `收到于 ${dateLabel(data.status.sentryReceivedAt, true)} · ` : ''}非实时确认，车辆休眠时可能不更新`}
+            </small>
           </div>
         </div>
       </section>

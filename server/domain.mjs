@@ -64,6 +64,10 @@ export function normalizeRecord(row) {
               'missingCostEnergy',
               'estimableCosts',
               'consumption',
+              'consumptionDriveCount',
+              'consumptionDistance',
+              'consumptionExcludedDriveCount',
+              'powerEstimatedDriveCount',
               'latitude',
               'longitude',
               'speed',
@@ -132,7 +136,9 @@ export function mergeStatus(
     sentry: null,
     version: software.version || null,
     versionSource: software.version ? 'database' : null,
-    versionRecordedAt: software.version ? recordedAt(software.recordedAt) : null,
+    versionRecordedAt: software.version
+      ? recordedAt(software.recordedAt)
+      : null,
     versionReceivedAt: null,
     versionUnavailable: software.unavailable || null,
     sentrySource: null,
@@ -149,8 +155,12 @@ export function mergeStatus(
   // These two fields have different fallbacks: installed updates in PostgreSQL,
   // and a bounded cache of MQTT receipts. Receipt time is not measurement time.
   const cached = live?.status || {};
-  const liveVersion = live?.connected && typeof live.values?.version === 'string' ? live.values.version : null;
-  const version = liveVersion || (!status.version ? cached.version?.value : null);
+  const liveVersion =
+    live?.connected && typeof live.values?.version === 'string'
+      ? live.values.version
+      : null;
+  const version =
+    liveVersion || (!status.version ? cached.version?.value : null);
   if (version) {
     status.version = version;
     status.versionSource = liveVersion ? 'mqtt' : 'cache';
@@ -158,11 +168,16 @@ export function mergeStatus(
     status.versionReceivedAt = recordedAt(cached.version?.receivedAt);
     status.versionUnavailable = null;
   }
-  const sentry = live?.connected && typeof live.values?.sentry_mode === 'boolean'
-    ? live.values.sentry_mode : cached.sentry_mode?.value;
+  const sentry =
+    live?.connected && typeof live.values?.sentry_mode === 'boolean'
+      ? live.values.sentry_mode
+      : cached.sentry_mode?.value;
   if (typeof sentry === 'boolean') {
     status.sentry = sentry;
-    status.sentrySource = live?.connected && typeof live.values?.sentry_mode === 'boolean' ? 'mqtt' : 'cache';
+    status.sentrySource =
+      live?.connected && typeof live.values?.sentry_mode === 'boolean'
+        ? 'mqtt'
+        : 'cache';
     status.sentryReceivedAt = recordedAt(cached.sentry_mode?.receivedAt);
   }
   if (!live?.connected) return status;

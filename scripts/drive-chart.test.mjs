@@ -9,6 +9,8 @@ import react from '@vitejs/plugin-react';
 let server;
 let BatteryChart;
 let DriveEnergy;
+let Overview;
+let makeDemo;
 let DetailHelp;
 let Popover;
 let PopoverTrigger;
@@ -35,6 +37,8 @@ before(async () => {
     '/components/drive-telemetry.tsx',
   ));
   ({ DetailHelp } = await server.ssrLoadModule('/components/detail-help.tsx'));
+  ({ Overview } = await server.ssrLoadModule('/components/data-views.tsx'));
+  ({ makeDemo } = await server.ssrLoadModule('/lib/data.ts'));
   ({ Popover, PopoverTrigger, PopoverContent } = await server.ssrLoadModule(
     '/components/ui/popover.tsx',
   ));
@@ -310,4 +314,47 @@ void test('zero and negative energy stay visible, while genuinely missing power 
     }),
   );
   assert.match(missing, /缺少能耗系数和可积分功率记录/);
+});
+
+void test('homepage puts fixed monthly counts first and explains the complete-drive consumption average', () => {
+  const data = {
+    ...makeDemo(),
+    recent30: { driveCount: 128, distance: 3456.7 },
+    totals: {
+      distance: 4000,
+      driveCount: 6,
+      consumption: 13.4,
+      consumptionDriveCount: 5,
+      consumptionExcludedDriveCount: 1,
+      powerEstimatedDriveCount: 5,
+      chargeCount: 0,
+      energy: 0,
+      cost: 0,
+      missingCosts: 0,
+    },
+  };
+  for (const days of [7, 30, 90]) {
+    const html = renderToStaticMarkup(
+      createElement(Overview, {
+        data,
+        days,
+        currency: '¥',
+        electricityPrice: null,
+        onNavigate() {},
+        onDrive() {},
+        onCharge() {},
+      }),
+    );
+    assert.ok(html.indexOf('近30天驾驶统计') < html.indexOf('已记录电量'));
+    assert.match(html, /近 30 天行程总数/);
+    assert.match(html, /128/);
+    assert.match(html, /近 30 天总里程/);
+    assert.match(html, /3,456\.7/);
+    assert.match(html, new RegExp(`近 ${days} 天平均能耗`));
+    assert.match(html, /13\.4/);
+    assert.match(html, /按 5 条完整记录计算/);
+    assert.match(html, /1 条暂未计入/);
+    assert.match(html, /含功率估算/);
+    assert.match(html, new RegExp(`aria-label="近 ${days} 天平均能耗说明"`));
+  }
 });

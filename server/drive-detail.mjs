@@ -4,17 +4,17 @@ import { numberOrNull } from './domain.mjs';
 // short, adjacent samples; never bridge nulls or extrapolate long gaps.
 export const MAX_POWER_INTERVAL_SECONDS = 5;
 
-export const driveEnergySql = `SELECT d.distance, c.efficiency AS coefficient,
-  CASE WHEN c.efficiency > 0 THEN
-    (d.start_rated_range_km - d.end_rated_range_km) * c.efficiency END AS net,
-  extract(epoch FROM d.end_date - d.start_date) AS duration,
-  r.samples, r.intervals, r.seconds, r.recovered, r.power_net
-  FROM drives d JOIN cars c ON c.id=d.car_id
-  LEFT JOIN LATERAL (
-    WITH samples AS (
+export const ratedEnergySql = `CASE WHEN c.efficiency > 0 THEN
+  (d.start_rated_range_km - d.end_rated_range_km) * c.efficiency END`;
+
+// Shared by detail and overview; totals skip all position work when the
+// coefficient-based estimate is available. Arguments are static flags, not SQL.
+export function drivePowerSql(missingRatedOnly = false) {
+  return `WITH samples AS (
       SELECT p.date, p.id, (to_jsonb(p)->>'power')::numeric AS power
       FROM positions p WHERE p.drive_id=d.id AND p.car_id=d.car_id
         AND p.date BETWEEN d.start_date AND d.end_date
+        ${missingRatedOnly ? `AND (${ratedEnergySql}) IS NULL` : ''}
     ), intervals AS (
       SELECT power, lag(power) OVER w AS previous,
         extract(epoch FROM date - lag(date) OVER w) AS dt
@@ -30,8 +30,16 @@ export const driveEnergySql = `SELECT d.distance, c.efficiency AS coefficient,
         WHEN previous < 0 AND power > 0 THEN previous * previous / (power - previous) * dt / 7200
         WHEN power < 0 AND previous > 0 THEN power * power / (previous - power) * dt / 7200
         ELSE 0 END) FILTER (WHERE usable) AS recovered
-    FROM valid
-  ) r ON true WHERE d.car_id=$1 AND d.id=$2 AND d.end_date IS NOT NULL`;
+    FROM valid`;
+}
+
+export const driveEnergySql = `SELECT d.distance, c.efficiency AS coefficient,
+  ${ratedEnergySql} AS net,
+  extract(epoch FROM d.end_date - d.start_date) AS duration,
+  r.samples, r.intervals, r.seconds, r.recovered, r.power_net
+  FROM drives d JOIN cars c ON c.id=d.car_id
+  LEFT JOIN LATERAL (${drivePowerSql()}) r ON true
+  WHERE d.car_id=$1 AND d.id=$2 AND d.end_date IS NOT NULL`;
 
 // Sample each sensor separately, so dense SOC samples cannot erase sparse range
 // or heater readings. No GPS requirement; always retain each sensor's endpoints.

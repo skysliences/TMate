@@ -136,6 +136,9 @@ void test('dashboard aggregates all records beyond first page and excludes unfin
   assert.equal(data.totals.missingCostEnergy, 12);
   assert.equal(data.totals.estimableCosts, 1);
   assert.equal(data.totals.consumption, 15);
+  assert.equal(data.totals.consumptionDriveCount, 61);
+  assert.equal(data.totals.consumptionExcludedDriveCount, 0);
+  assert.deepEqual(data.recent30, { driveCount: 61, distance: 610 });
   assert.equal(data.status.battery, 80);
   assert.equal(data.status.range, 350);
   // Older schemas without TPMS columns still return the last valid location.
@@ -232,10 +235,21 @@ void test('drive detail endpoint is authenticated, read-only, completed-drive-on
   assert.equal(data.energy.recoveredKwh, null);
   assert.equal(data.energy.recoveryUnavailable, 'no-power');
   assert.ok(Array.isArray(data.battery.series.battery));
-  for (const suffix of ['cars/2/drives/1/detail', 'cars/1/drives/101/detail', 'cars/1/drives/999999/detail', 'cars/1/charges/1/detail']) {
-    assert.equal((await fetch(`${base}/api/${suffix}`, { headers })).status, 404);
+  for (const suffix of [
+    'cars/2/drives/1/detail',
+    'cars/1/drives/101/detail',
+    'cars/1/drives/999999/detail',
+    'cars/1/charges/1/detail',
+  ]) {
+    assert.equal(
+      (await fetch(`${base}/api/${suffix}`, { headers })).status,
+      404,
+    );
   }
-  assert.equal((await fetch(`${base}/api/cars/1/drives/0/detail`, { headers })).status, 400);
+  assert.equal(
+    (await fetch(`${base}/api/cars/1/drives/0/detail`, { headers })).status,
+    400,
+  );
 });
 void test('unknown telemetry stays null and retained message receipt never masquerades as freshness', () => {
   const unknown = mergeStatus();
@@ -325,4 +339,37 @@ void test('map API enforces authentication, ownership and bounded parameters; de
   assert.equal(drive.end, drive.start);
   assert.equal(drive.startAddressInfo.road, '示例路');
   assert.ok(mapCalls.at(-1).searchParams.get('location').startsWith('120.'));
+});
+
+void test('dashboard exposes a fixed 30-day summary and uses power estimates in every selected period', async () => {
+  await db.exec(`
+    INSERT INTO cars VALUES(3,'统计测试','3','','',3,NULL);
+    ALTER TABLE positions ADD COLUMN power numeric;
+    INSERT INTO drives(id,car_id,start_date,end_date,distance,duration_min)
+      SELECT 500+n,3,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - age * interval '1 day',
+        (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - age * interval '1 day' + interval '5 seconds',
+        distance,1 FROM (VALUES (1,1,1),(2,10,10),(3,40,100)) v(n,age,distance);
+    INSERT INTO positions(id,car_id,drive_id,date,power)
+      SELECT d.id*2+j,3,d.id,d.start_date+j*interval '5 seconds',36
+      FROM drives d CROSS JOIN generate_series(0,1) j WHERE d.car_id=3;
+  `);
+  const headers = { Authorization: `Bearer ${key}` };
+  for (const [days, count, distance] of [
+    [7, 1, 1],
+    [30, 2, 11],
+    [90, 3, 111],
+  ]) {
+    const response = await fetch(`${base}/api/cars/3/dashboard?days=${days}`, {
+      headers,
+    });
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.totals.driveCount, count);
+    assert.equal(data.totals.powerEstimatedDriveCount, count);
+    assert.ok(
+      Math.abs(data.totals.consumption - ((count * 0.05) / distance) * 100) <
+        1e-8,
+    );
+    assert.deepEqual(data.recent30, { driveCount: 2, distance: 11 });
+  }
 });

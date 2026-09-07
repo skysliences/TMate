@@ -55,6 +55,7 @@ export type Dashboard = {
   charges: Charge[];
   battery: { date: string; range: number }[];
   daily?: { date: string; distance: number }[];
+  recent30?: { driveCount: number; distance: number };
   totals?: {
     distance: number;
     driveCount: number;
@@ -65,6 +66,10 @@ export type Dashboard = {
     missingCostEnergy?: number;
     estimableCosts?: number;
     consumption: number | null;
+    consumptionDriveCount?: number;
+    consumptionDistance?: number;
+    consumptionExcludedDriveCount?: number;
+    powerEstimatedDriveCount?: number;
   };
   truncated?: boolean;
 };
@@ -150,7 +155,7 @@ export function makeDemo(carId = 1): Dashboard {
         ).toFixed(1),
       });
   }
-  return {
+  const dashboard: Dashboard = {
     car: {
       id: carId,
       name: carId === 1 ? '小白' : '小蓝',
@@ -182,6 +187,24 @@ export function makeDemo(carId = 1): Dashboard {
     charges,
     battery,
   };
+  const recent = summarize(dashboard, 30);
+  dashboard.recent30 = {
+    driveCount: recent.driveCount,
+    distance: recent.distance,
+  };
+  return dashboard;
+}
+
+// Older backends can supply the existing full 30-day totals, but never infer
+// a month from the visible page or from a 7/90-day total with the wrong scope.
+export function recentDrivingSummary(data: Dashboard, days: number) {
+  if (data.recent30) return data.recent30;
+  if (days === 30 && data.totals)
+    return {
+      driveCount: data.totals.driveCount,
+      distance: data.totals.distance,
+    };
+  return null;
 }
 export function summarize(data: Dashboard, days: number) {
   const today = new Date(new Date(data.asOf).getTime() + 8 * 3600000)
@@ -205,6 +228,10 @@ export function summarize(data: Dashboard, days: number) {
     consumption: validDistance
       ? (valid.reduce((s, d) => s + (d.energy ?? 0), 0) / validDistance) * 100
       : null,
+    consumptionDriveCount: valid.length,
+    consumptionDistance: validDistance,
+    consumptionExcludedDriveCount: drives.length - valid.length,
+    powerEstimatedDriveCount: 0,
   };
   const daily = Array.from({ length: days }, (_, i) => {
     const date = new Date(since.getTime() + i * 86400000 + 8 * 3600000)

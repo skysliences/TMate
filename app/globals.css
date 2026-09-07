@@ -364,6 +364,28 @@ h1 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr);
   gap: 22px;
 }
+.overview-monthly-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.overview-monthly-summary .metric {
+  min-width: 0;
+}
+.overview-monthly-summary .metric-label {
+  min-height: 3em;
+  align-items: flex-start;
+}
+.overview-monthly-summary .metric-label > svg {
+  flex-shrink: 0;
+}
+.metric-title {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .vehicle-panel {
   padding: 30px 32px;
   background: linear-gradient(140deg, #ffffffd9, #ffffff70);

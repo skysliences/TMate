@@ -1,5 +1,6 @@
 // Independent, parameterized read-only queries against the documented TeslaMate schema.
 // Upstream schema references are listed in README.md. No Tesla account tokens are accessed.
+import { drivePowerSql, ratedEnergySql } from './drive-detail.mjs';
 export const carsSql = `SELECT id, coalesce(nullif(name, ''), '我的特斯拉') AS name,
   coalesce(model, '') AS model, coalesce(marketing_name, trim_badging, '') AS trim
   FROM cars ORDER BY display_priority NULLS LAST, id`;
@@ -27,10 +28,29 @@ export const chargeBase = `SELECT cp.id, cp.start_date AS date, ${place('g', 'a'
   LEFT JOIN geofences g ON g.id=cp.geofence_id
   WHERE cp.car_id=$1 AND cp.start_date >= $2 AND cp.end_date IS NOT NULL`;
 export const chargesSql = `${chargeBase} ORDER BY cp.start_date DESC, cp.id DESC LIMIT $3 OFFSET $4`;
-export const driveTotalsSql = `SELECT coalesce(sum(d.distance),0) AS distance, count(*) AS "driveCount",
-  sum(${energy}) / nullif(sum(CASE WHEN ${energy} IS NOT NULL THEN d.distance END),0) * 100 AS consumption
+// Same complete-drive estimate as the detail endpoint. A partial power sum
+// must never be divided by the full trip distance or included in a period mean.
+export const driveTotalsSql = `WITH estimates AS (
+  SELECT d.distance, ${ratedEnergySql} AS rated_net,
+    CASE WHEN extract(epoch FROM d.end_date-d.start_date)>0 AND r.intervals>0
+      AND abs(extract(epoch FROM d.end_date-d.start_date)-r.seconds)<=0.001
+      THEN r.power_net END AS power_net
   FROM drives d JOIN cars c ON c.id=d.car_id
-  WHERE d.car_id=$1 AND d.start_date >= $2 AND d.end_date IS NOT NULL AND d.distance > 0`;
+  LEFT JOIN LATERAL (${drivePowerSql(true)}) r ON true
+  WHERE d.car_id=$1 AND d.start_date >= $2 AND d.end_date IS NOT NULL AND d.distance > 0
+    AND d.start_date <= $3 AND d.end_date <= $3
+) SELECT coalesce(sum(distance),0) AS distance, count(*) AS "driveCount",
+  sum(coalesce(rated_net,power_net)) / nullif(sum(distance) FILTER (WHERE coalesce(rated_net,power_net) IS NOT NULL),0) * 100 AS consumption,
+  count(*) FILTER (WHERE coalesce(rated_net,power_net) IS NOT NULL) AS "consumptionDriveCount",
+  coalesce(sum(distance) FILTER (WHERE coalesce(rated_net,power_net) IS NOT NULL),0) AS "consumptionDistance",
+  count(*) FILTER (WHERE coalesce(rated_net,power_net) IS NULL) AS "consumptionExcludedDriveCount",
+  count(*) FILTER (WHERE rated_net IS NULL AND power_net IS NOT NULL) AS "powerEstimatedDriveCount"
+  FROM estimates`;
+// A small independent aggregate keeps the homepage's fixed 30-day figures
+// correct even when the other panels are set to 7/90 days or lists are paged.
+export const recentDrivingSql = `SELECT count(*) AS "driveCount", coalesce(sum(distance),0) AS distance
+  FROM drives WHERE car_id=$1 AND start_date >= $2 AND start_date <= $3
+  AND end_date IS NOT NULL AND end_date <= $3 AND distance > 0`;
 const billableEnergy = `CASE WHEN charge_energy_used >= 0 THEN charge_energy_used WHEN charge_energy_added >= 0 THEN charge_energy_added ELSE NULL END`;
 export const chargeTotalsSql = `SELECT coalesce(sum(charge_energy_added),0) AS energy,
   count(*) AS "chargeCount", coalesce(sum(cost),0) AS cost,

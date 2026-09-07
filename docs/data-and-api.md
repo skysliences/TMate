@@ -5,7 +5,9 @@
 - 行程详情优先使用 TeslaMate 的额定续航和车辆能耗系数估算；缺少任一项时，回退到本次行程的原始功率积分。两种方法均不可用时，`energy.netUnavailable` 返回 `no-efficiency` 或 `no-range`，界面同时说明缺少可积分功率。不会套用其他车型系数、假定电池容量或反写 TeslaMate；有估算值时为 null。
 - 所有日期按 `Asia/Shanghai` 显示；统计范围包括今天在内的最近 7 / 30 / 90 个自然日。
 - 统计仅包含完成的行程和充电。正在行驶、充电等状态由 MQTT 提供；当前进行中的记录不会计入已完成记录合计。
-- 概览和行程列表的原有耗电估算 = `(start_rated_range_km - end_rated_range_km) × cars.efficiency`；平均能耗按有有效估算值的行程里程加权。此次功率回退仅用于单次行程详情，列表/概览缺少系数时仍显示 `—`，避免把大量功率积分查询加入列表请求。净回收时保留负值。
+- 概览平均能耗与行程详情统一口径：优先用 `(start_rated_range_km - end_rated_range_km) × cars.efficiency`，缺少有效系数或额定续航时，使用本次行程完整覆盖的功率积分。平均值 = 完整估算的净耗电合计 / 同一批行程的里程合计 × 100，不是各条行程平均值的简单平均。缺口导致的片段耗电、完全缺失能耗的行程不进入分子或分母；真正的 0 和负净耗电保留。展示参与及未参与计算的行程数，无完整估算时仍显示 `—`。
+- 概览平均能耗汇总所选 7/30/90 天范围内的全部已完成正里程行程，不只统计列表前 50 条；后端通过单条参数化汇总查询计算，只对缺少有效续航估算的行程读取原始功率，复用详情的间隔和积分规则。独立行程列表的 `energy` 暂仍使用旧的续航系数口径，不在分页接口额外积分。
+- 首页顶部固定显示近 30 天全部已完成正里程行程的总次数和里程之和。时间范围包括北京时间今天和前 29 个自然日，截止 API 的 `asOf`；不是车辆里程表读数。切换其他面板的 7/90 天筛选或翻页不会改变该固定汇总。没有行程时显示真实的 0，旧服务无法提供正确 30 天范围时提示升级，不从当前页推测合计。
 - 行程详情「能量」展示净耗电量（kWh）、平均净能耗（kWh/100 km，同时给出 Wh/km）与有效片段内的动能回收估算。净耗电已包含回收的影响，不再次扣除回收值；净耗电为负时保留负值。它们不是电表实测值。
 - 功率回退的净耗电 = `Σ((前一功率 + 当前功率) / 2 × 实际间隔秒数 / 3600)`，功率单位 kW、结果 kWh。正负功率一起积分，已包含回收影响。只连接间隔大于 0 且不超过 5 秒的相邻有效功率记录，不跳过空功率去连接更远的有效点，不对长缺口补值，不按覆盖率放大电量，不从已抽样曲线反算。5 秒是 TMate 明确的短间隔线性近似上限，不代表车辆功率在间隔内实际恒定，也不是 TeslaMate 的车辆系数计算方法。
 - 功率积分完整覆盖行程时，`netScope=trip`，平均净能耗为净耗电 / 本次里程 × 100；缺少或零里程时平均值为 null。有长缺口、空功率或未覆盖行程两端时，`netScope=partial`，页面明确显示「有效片段净耗电」，平均值为 null，避免拿片段电量除以全程里程。时间比较只允许 1 毫秒数值误差，不把 99% 覆盖当作完整数据。功率法可能遗漏未上报的车内用电，不等同于完整电池耗电、仪表或电表读数。
@@ -41,6 +43,8 @@
 | `/api/cars/:id/charges/:chargeId/curve`           | 充电采样，检查车辆归属           |
 
 连接池默认只读，查询参数化并设置 15 秒超时。还应使用独立 SELECT-only 数据库账号。API 不会返回数据库连接串或访问密钥。
+
+`dashboard` 增加固定月度汇总 `recent30: {driveCount, distance}`。`totals.consumption` 对应当前请求的 `days`，附带 `consumptionDriveCount`、`consumptionDistance`、`consumptionExcludedDriveCount` 和 `powerEstimatedDriveCount`，分别表示完整估算行程数、对应里程、未纳入平均的行程数及其中使用功率回退的行程数。核对线上合计与完整行程详情：在容器 `/app` 工作目录执行 `node --input-type=module < deploy/verify-overview.mjs`（脚本可由宿主机标准输入传入）。
 
 行程详情返回 `{ energy, battery }`。`energy` 包含 `netKwh`、`netMethod`（`rated-range` / `power` / null）、`netScope`（`trip` / `partial` / null）、`netUnavailable`、`consumptionKwh100Km`、`recoveredKwh`、`recoveryCoverage`（0–1 或 null，功率积分覆盖率）、`recoveryUnavailable`（`no-power` / `sparse-power` / null）。`netKwh` 必须结合 `netScope` 使用：partial 只代表已记录的有效片段。`battery.series` 的键为 `battery`、`usableBattery`、`ratedRange`、`estimatedRange`、`heater`，每项是 `{date,value}[]`，日期为 UTC ISO 字符串；加热值为 0/1。`battery.sampleCounts` 给出每项抽样前的有效记录数。端点不返回坐标，不调用高德，不增加数据库写权限；旧轨迹、地图与充电接口保持兼容。界面上的数据口径说明位于模块标题旁的问号按钮中，支持点击、触摸与键盘操作，不放在模块底部。
 

@@ -112,7 +112,11 @@ export function createApp({
       return;
     }
     if (path === '/api/health' && req.method === 'GET') {
-      json(res, 200, { service: 'voltlog', appName: 'TMate', version: appPackage.version });
+      json(res, 200, {
+        service: 'voltlog',
+        appName: 'TMate',
+        version: appPackage.version,
+      });
       return;
     }
     const now = Date.now();
@@ -170,7 +174,11 @@ export function createApp({
         }
         if (kind === 'detail') {
           const detail = await readDriveDetail(pool, id, recordId);
-          json(res, detail ? 200 : 404, detail || { error: '行程不存在或尚未结束' });
+          json(
+            res,
+            detail ? 200 : 404,
+            detail || { error: '行程不存在或尚未结束' },
+          );
           return;
         }
         const points = await query(
@@ -231,10 +239,11 @@ export function createApp({
         battery,
         telemetry,
         software,
+        recentDriving,
       ] = await Promise.all([
         query(sql.drivesSql, [...args, 50, 0]),
         query(sql.chargesSql, [...args, 50, 0]),
-        query(sql.driveTotalsSql, args),
+        query(sql.driveTotalsSql, [...args, period.now.toISOString()]),
         query(sql.chargeTotalsSql, args),
         query(sql.dailySql, args),
         query(sql.positionSql, [id]),
@@ -243,6 +252,11 @@ export function createApp({
         query(sql.batterySql, args),
         query(sql.telemetrySql, [id]),
         readSoftware(pool, id),
+        query(sql.recentDrivingSql, [
+          id,
+          getPeriod('30', period.now).since.toISOString(),
+          period.now.toISOString(),
+        ]),
       ]);
       const totals = { ...driveTotals[0], ...chargeTotals[0] };
       json(res, 200, {
@@ -259,6 +273,7 @@ export function createApp({
         drives,
         charges,
         totals,
+        recent30: recentDriving[0],
         daily,
         battery,
         truncated: totals.driveCount > 50 || totals.chargeCount > 50,
