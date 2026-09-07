@@ -308,7 +308,7 @@ export async function createMapService({
             {
               location: cacheKey(frame.center),
               zoom: String(frame.zoom),
-              size: '640*360',
+              size: `${frame.width}*${frame.height}`,
               scale: '1',
               traffic: '0',
             },

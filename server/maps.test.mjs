@@ -147,6 +147,16 @@ void test('map requests send only center/zoom, preserve protected image output, 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].searchParams.has('paths'), false);
   assert.equal(calls[0].searchParams.has('markers'), false);
+  assert.equal(calls[0].searchParams.get('scale'), '1');
+  assert.equal(
+    calls[0].searchParams.get('size'),
+    `${frame.width}*${frame.height}`,
+  );
+  assert.equal(calls[0].searchParams.get('zoom'), String(frame.zoom));
+  assert.equal(
+    calls[0].searchParams.get('location'),
+    `${frame.center.longitude.toFixed(6)},${frame.center.latitude.toFixed(6)}`,
+  );
   assert.equal(frame.coordinateSystem, 'GCJ-02');
   assert.match(frame.image, /^data:image\/png;base64,/);
   assert.ok(!JSON.stringify(frame).includes(key));

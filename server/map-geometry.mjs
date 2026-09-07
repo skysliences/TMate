@@ -2,6 +2,11 @@ import gcoord from 'gcoord';
 import { coordinatesOrNull } from './domain.mjs';
 export const MAP_WIDTH = 640,
   MAP_HEIGHT = 360;
+// AMap staticmap with scale=1 uses 512 * 2^zoom world pixels. This is
+// provider-specific (not the common 256-based tile zoom convention); measured
+// control-point regressions cover zooms 14, 16 and 17. Fit and overlay must
+// share this scale, otherwise only the focused map center can align.
+const AMAP_STATIC_WORLD_SIZE = 512;
 export function mapCoordinate(value) {
   const point = coordinatesOrNull(value);
   if (!point || Math.abs(point.latitude) > 85) return null;
@@ -38,8 +43,10 @@ export function mapFrame(points, focus = 'route', zoomDelta = 0) {
   const fit = Math.floor(
     Math.log2(
       Math.min(
-        (MAP_WIDTH - 96) / Math.max((maxX - minX) * 256, 0.0001),
-        (MAP_HEIGHT - 96) / Math.max((maxY - minY) * 256, 0.0001),
+        (MAP_WIDTH - 96) /
+          Math.max((maxX - minX) * AMAP_STATIC_WORLD_SIZE, 0.0001),
+        (MAP_HEIGHT - 96) /
+          Math.max((maxY - minY) * AMAP_STATIC_WORLD_SIZE, 0.0001),
       ),
     ),
   );
@@ -60,7 +67,7 @@ export function mapFrame(points, focus = 'route', zoomDelta = 0) {
     latitude: Number(rawCenter.latitude.toFixed(6)),
   };
   const origin = project(center),
-    size = 256 * 2 ** zoom;
+    size = AMAP_STATIC_WORLD_SIZE * 2 ** zoom;
   const screen = projected.map((p) => [
     Number((MAP_WIDTH / 2 + (p[0] - origin[0]) * size).toFixed(2)),
     Number((MAP_HEIGHT / 2 + (p[1] - origin[1]) * size).toFixed(2)),
